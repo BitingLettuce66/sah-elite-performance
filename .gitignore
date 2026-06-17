@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dev-dist/
+.DS_Store
+*.log
+
+# Secrets / local config
+.env
+.env.*
+*.local
+
+# Private context — kept on disk, never published
+App-Spec.md
+CLAUDE.local.md
+.claude/settings.local.json
