@@ -11,6 +11,8 @@ import { loadAllLogs, putLog, deleteLog, migrateFromLocalStorage, getSetting, pu
 import { drawProgressCharts, destroyCharts } from './charts.js';
 import { drawCard, saveCanvas, shareCanvas } from './share.js';
 import { SPRINT_DISTANCES, sprintResults, bestByDistance, loggedDistances, seriesForDistance } from './sprints.js';
+import { initSync } from './sync.js';
+import { addDays, sortByDate, findToday as findTodaySession, computeStreak, statusOf } from './logic.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 
@@ -45,9 +47,7 @@ const NIGGLE = ['None','Monitor','Modify','Stop'];
 const todayISO = () => { const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
 // Round to kill floating-point artifacts (e.g. 3.7399999 → 3.74). null stays null.
 const round = (v, dp) => v==null ? null : Math.round(v * 10**dp) / 10**dp;
-// Calendar-day arithmetic on YYYY-MM-DD (local, DST-safe).
-function addDays(iso, n){ const [y,m,d]=iso.split('-').map(Number); const dt=new Date(y,m-1,d+n);
-  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; }
+// (addDays lives in logic.js)
 // Bind the relative template to the calendar: session.date = assignment start + offset.
 // Leaves any session that already has a date (legacy seed) untouched.
 function materializeDates(){
@@ -103,24 +103,47 @@ function exportBackup(){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url), 1000);
 }
-async function importBackup(file){
-  try {
-    const data = JSON.parse(await file.text());
-    const logs = Array.isArray(data) ? data : (data.logs || []);
-    let n = 0;
-    for(const lg of logs){ if(lg && lg.sessionId){
-      const rec = { athleteId:ATHLETE_ID, planId:PLAN_ID, ...lg };
-      await putLog(rec); state.logs[rec.sessionId]=rec; n++;
-    } }
-    render();
-    openSheet(`<h3>Backup restored</h3><p class="sheet-note">Imported ${n} logged session${n===1?'':'s'}.</p>
-      <div class="sheet-actions"><button class="btn-save" id="x-ok">Done</button></div>`);
-    $('#x-ok').onclick = closeSheet;
-  } catch(e){
-    openSheet(`<h3>Import failed</h3><p class="sheet-note">That file didn't look like a SAH backup.</p>
-      <div class="sheet-actions"><button class="btn-save" id="x-ok">OK</button></div>`);
-    $('#x-ok').onclick = closeSheet;
+// Validate a parsed backup: accept a {logs:[...]} object or a bare array;
+// keep only well-formed entries (object with a string sessionId).
+function validateBackup(data){
+  const raw = Array.isArray(data) ? data : (data && Array.isArray(data.logs) ? data.logs : null);
+  if(!raw) return { ok:false, error:"That file isn't a SAH backup — no logs found." };
+  const logs = raw.filter(l => l && typeof l==='object' && typeof l.sessionId==='string');
+  if(!logs.length) return { ok:false, error:'No valid log entries were found in that file.' };
+  return { ok:true, logs };
+}
+function applyBackup(logs){
+  let n=0;
+  for(const lg of logs){
+    const rec = { athleteId:ATHLETE_ID, planId:PLAN_ID, ...lg, sessionId:lg.sessionId };
+    state.logs[rec.sessionId] = rec;
+    putLog(rec).catch(e=>console.error('Import write failed', e));
+    n++;
   }
+  return n;
+}
+function importNotice(title, body){
+  openSheet(`<h3>${esc(title)}</h3><p class="sheet-note">${esc(body)}</p>
+    <div class="sheet-actions"><button class="btn-save" id="x-ok">OK</button></div>`);
+  $('#x-ok').onclick = closeSheet;
+}
+async function importBackup(file){
+  let data;
+  try { data = JSON.parse(await file.text()); }
+  catch(e){ return importNotice('Import failed', "That file isn't valid JSON."); }
+  const v = validateBackup(data);
+  if(!v.ok) return importNotice('Import failed', v.error);
+  const existing = Object.keys(state.logs).length;
+  const finish = () => { const n=applyBackup(v.logs); render();
+    importNotice('Backup restored', `Imported ${n} logged session${n===1?'':'s'}.`); };
+  if(existing > 0){
+    // Confirm before overwriting existing data.
+    openSheet(`<h3>Import backup?</h3>
+      <p class="sheet-note">This merges <b>${v.logs.length}</b> session${v.logs.length===1?'':'s'} from the file into your <b>${existing}</b> existing log${existing===1?'':'s'}. Entries for the same session are overwritten, and this can't be undone.</p>
+      <div class="sheet-actions"><button class="btn-cancel" id="x-cancel">Cancel</button><button class="btn-save" id="x-go">Import</button></div>`);
+    $('#x-cancel').onclick = closeSheet;
+    $('#x-go').onclick = finish;
+  } else finish();
 }
 
 async function boot(){
@@ -134,6 +157,9 @@ async function boot(){
     templateId:state.data.templateId||'default', startDate:state.data.startDate,
     planVersion:state.data.planVersion||1, status:'active' };
   state.assignment = defaultAssignment;
+  // Ask the browser to keep our data (reduces the chance iOS evicts it under pressure).
+  try { if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{}); } catch(e){}
+  state.storageOk = true;
   try {
     const moved = await migrateFromLocalStorage();
     if (moved) console.info(`Imported ${moved} log(s) from localStorage into IndexedDB.`);
@@ -143,15 +169,21 @@ async function boot(){
     let asg = await getSetting('assignment:'+ATHLETE_ID);
     if(!asg){ asg = defaultAssignment; await putSetting('assignment:'+ATHLETE_ID, asg); }
     state.assignment = asg;
-  } catch(e){ console.error('IndexedDB unavailable; logs will not persist this session', e); }
+  } catch(e){
+    // App still works read-only on the programme; just can't save this session.
+    state.storageOk = false;
+    console.warn('Storage unavailable — logs will not persist this session.', e);
+  }
   materializeDates();   // compute session.date from the active assignment
+  initSync();           // no-op while disabled; cloud sync slots in here later
   document.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => { if(b.dataset.view==='history') state._scrollHistory=true; state.view=b.dataset.view; sync(); render(); });
   sync(); render();
+  if(!state.storageOk) showToast('Storage is unavailable — anything you log won’t be saved this session.', null, null, 6000);
 }
-function sync(){ document.querySelectorAll('#tabbar button').forEach(b => b.classList.toggle('active', b.dataset.view===state.view)); }
+function sync(){ document.querySelectorAll('#tabbar button').forEach(b => { const on=b.dataset.view===state.view; b.classList.toggle('active', on); if(on) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); }); }
 
-const sorted = () => [...state.data.sessions].sort((a,b)=>a.date.localeCompare(b.date));
-function findToday(){ const t=todayISO(); return state.data.sessions.find(x=>x.date===t) || sorted().find(x=>x.date>=t) || null; }
+const sorted = () => sortByDate(state.data.sessions);
+function findToday(){ return findTodaySession(state.data.sessions, todayISO()); }
 function byId(id){ return state.data.sessions.find(x=>x.id===id); }
 const pill = t => { const m=TYPE[t]||TYPE.LOW; return `<span class="pill ${m.cls}">${m.label}</span>`; };
 const esc = s => (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -204,9 +236,8 @@ function viewToday(){
 }
 // Tappable status dot: done ✓ / missed (past, not done) / upcoming.
 function statusDot(se, lg){
-  if(lg.done) return { cls:'done', char:'✓' };
-  if(se.date < todayISO()) return { cls:'missed', char:'○' };
-  return { cls:'future', char:'○' };
+  const cls = statusOf(se, lg||{}, todayISO());
+  return { cls, char: cls==='done' ? '✓' : '○' };
 }
 const monthLabel = iso => new Date(iso+'T00:00').toLocaleDateString('en-AU',{month:'long',year:'numeric'});
 function viewHistory(){
@@ -224,10 +255,7 @@ function viewHistory(){
   }).join('');
   return `<div class="hist-head"><p class="eyebrow">History</p><button class="link-btn" id="hist-today">Today</button></div><div class="list">${rows}</div>`;
 }
-function streak(){
-  const past = sorted().filter(s=>s.date<=todayISO()).reverse();
-  let n=0; for(const s of past){ if((getLog(s.id)||{}).done) n++; else break; } return n;
-}
+function streak(){ return computeStreak(state.data.sessions, state.logs, todayISO()); }
 // Next deload / taper / race / test-gate on or after today.
 function nextCheckpoint(){
   const t=todayISO();

@@ -8,23 +8,26 @@
   <title>SAH Elite Performance</title>
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="SAH Elite" />
 </head>
 <body>
   <div id="app">
     <header id="topbar">
-      <div class="brand">SAH <span>Elite Performance</span></div>
+      <h1 class="brand">SAH <span>Elite Performance</span></h1>
       <div id="phase" class="phase"></div>
     </header>
 
-    <main id="view"></main>
+    <main id="view" aria-live="polite">
+      <div class="loading" role="status" aria-label="Loading"><span class="spinner"></span></div>
+    </main>
 
-    <nav id="tabbar">
-      <button data-view="today" class="active"><span class="ic">◎</span>Today</button>
-      <button data-view="history"><span class="ic">▤</span>History</button>
-      <button data-view="progress"><span class="ic">▰</span>Progress</button>
-      <button data-view="share"><span class="ic">↗</span>Share</button>
+    <nav id="tabbar" aria-label="Primary">
+      <button data-view="today" class="active" aria-label="Today"><span class="ic" aria-hidden="true">◎</span>Today</button>
+      <button data-view="history" aria-label="History"><span class="ic" aria-hidden="true">▤</span>History</button>
+      <button data-view="progress" aria-label="Progress"><span class="ic" aria-hidden="true">▰</span>Progress</button>
+      <button data-view="share" aria-label="Share"><span class="ic" aria-hidden="true">↗</span>Share</button>
     </nav>
   </div>
 

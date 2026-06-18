@@ -4,6 +4,7 @@
    without a rewrite — bump DB_VERSION and add stores in upgrade(). */
 
 import { openDB } from 'idb';
+import { enqueue } from './sync.js';   // no-op while sync is disabled; capture point for cloud sync
 
 const DB_NAME = 'sah-elite';
 const DB_VERSION = 2;
@@ -45,11 +46,15 @@ export async function loadAllLogs(athleteId = ATHLETE_ID) {
 
 // Insert/update one log (must carry a `sessionId`).
 export async function putLog(log) {
-  return (await db()).put(LOGS, log);
+  const r = await (await db()).put(LOGS, log);
+  enqueue({ store: LOGS, op: 'put', key: log.sessionId, value: log });
+  return r;
 }
 // Remove one log entirely.
 export async function deleteLog(sessionId) {
-  return (await db()).delete(LOGS, sessionId);
+  const r = await (await db()).delete(LOGS, sessionId);
+  enqueue({ store: LOGS, op: 'delete', key: sessionId });
+  return r;
 }
 
 // Key/value settings (athlete-scoped keys, e.g. `targets:self`).
@@ -58,7 +63,9 @@ export async function getSetting(key) {
   return r ? r.value : null;
 }
 export async function putSetting(key, value) {
-  return (await db()).put(SETTINGS, { key, value });
+  const r = await (await db()).put(SETTINGS, { key, value });
+  enqueue({ store: SETTINGS, op: 'put', key, value });
+  return r;
 }
 
 // One-time import of logs saved by the old localStorage scaffold.
