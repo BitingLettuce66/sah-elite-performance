@@ -13,6 +13,7 @@ import { drawCard, saveCanvas, shareCanvas } from './share.js';
 import { SPRINT_DISTANCES, sprintResults, bestByDistance, loggedDistances, seriesForDistance } from './sprints.js';
 import { initSync } from './sync.js';
 import { addDays, sortByDate, findToday as findTodaySession, computeStreak, statusOf } from './logic.js';
+import { AUTH_ENABLED, sendMagicLink, getUser, signOut, onAuthChange } from './auth.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 
@@ -33,7 +34,7 @@ const updateSW = registerSW({
 // state.logs is an in-memory cache of all logs, loaded once from IndexedDB on
 // boot so render code can read them synchronously.
 const state = { data: null, view: 'today', logs: {}, share: { type: 'session', size: 'story' },
-  sprintDist: null, targets: {}, assignment: null, bodyweight: [] };
+  sprintDist: null, targets: {}, assignment: null, bodyweight: [], user: null };
 const targetsKey = () => `targets:${ATHLETE_ID}`;
 const slug = s => s.replace(/[^a-z0-9]+/gi, '-');
 
@@ -176,6 +177,10 @@ async function boot(){
   }
   materializeDates();   // compute session.date from the active assignment
   initSync();           // no-op while disabled; cloud sync slots in here later
+  if(AUTH_ENABLED){     // Phase 1: restore session + react to login/logout (sync stays off until Phase 2)
+    try { state.user = await getUser(); } catch(e){ state.user = null; }
+    onAuthChange(session => { state.user = session ? session.user : null; render(); });
+  }
   document.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => { if(b.dataset.view==='history') state._scrollHistory=true; state.view=b.dataset.view; sync(); render(); });
   sync(); render();
   if(!state.storageOk) showToast('Storage is unavailable — anything you log won’t be saved this session.', null, null, 6000);
@@ -291,6 +296,7 @@ function viewProgress(){
    ${chartCard('Readiness','/10','readiness')}
    ${bwCard()}
    ${chartCard('Adherence','sessions','adh')}
+   ${accountCard()}
    <section class="backup">
      <h3>Plan</h3>
      <p>Programme starts <b>${state.assignment?fmtDate(state.assignment.startDate):'—'}</b> · ${state.data.sessions.length} sessions, scheduled relative to that date.</p>
@@ -329,6 +335,38 @@ function sprintProgressCard(){
     ${chips}<div class="chart-wrap" id="wrap-sprint"><canvas id="ch-sprint"></canvas></div></section>`;
 }
 // Bodyweight card (a periodic metric, not per-session) + quick-log.
+// Account / cloud sign-in (Phase 1). Hidden when auth isn't configured.
+function accountCard(){
+  if(!AUTH_ENABLED) return '';
+  if(state.user){
+    return `<section class="backup"><h3>Account</h3>
+      <p>Signed in as <b>${esc(state.user.email||'your account')}</b>. Your data still lives on this device — cloud sync turns on in the next step.</p>
+      <div class="backup-actions"><button class="btn-cancel" id="auth-signout">Sign out</button></div></section>`;
+  }
+  return `<section class="backup"><h3>Account</h3>
+    <p>Sign in to sync your training across devices and back it up. The app works fully offline either way — signing in only adds sync.</p>
+    <div class="backup-actions"><button class="btn-cancel" id="auth-signin">Sign in to sync</button></div></section>`;
+}
+function openSignIn(){
+  openSheet(`<h3>Sign in</h3><p class="sheet-note">Enter your email and we'll send a one-tap sign-in link — no password.</p>
+    <div class="field"><label>Email</label><input id="auth-email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com"></div>
+    <div class="sheet-actions"><button class="btn-cancel" id="x-cancel">Cancel</button><button class="btn-save" id="x-send">Send link</button></div>`);
+  $('#x-cancel').onclick=closeSheet;
+  $('#x-send').onclick=async ()=>{
+    const email=$('#auth-email').value.trim(); if(!email) return;
+    const btn=$('#x-send'); btn.textContent='Sending…'; btn.disabled=true;
+    try {
+      await sendMagicLink(email);
+      openSheet(`<h3>Check your email</h3><p class="sheet-note">A sign-in link is on its way to <b>${esc(email)}</b>. Open it on this device to finish.</p>
+        <div class="sheet-actions"><button class="btn-save" id="x-ok">OK</button></div>`);
+      $('#x-ok').onclick=closeSheet;
+    } catch(e){
+      openSheet(`<h3>Couldn't send the link</h3><p class="sheet-note">${esc(e.message||'Something went wrong. Check the email and try again.')}</p>
+        <div class="sheet-actions"><button class="btn-save" id="x-ok">OK</button></div>`);
+      $('#x-ok').onclick=closeSheet;
+    }
+  };
+}
 function bwCard(){
   return `<section class="chart-card"><h3>Bodyweight<button class="link-btn" id="bw-log">Log weight</button></h3>
     <div class="chart-wrap" id="wrap-bw"><canvas id="ch-bw"></canvas></div></section>`;
@@ -469,6 +507,8 @@ function render(){
     $('#view').querySelectorAll('.chip[data-dist]').forEach(c=>c.onclick=()=>{ state.sprintDist=c.dataset.dist; render(); });
     const tg=$('#pb-targets'); if(tg) tg.onclick=openTargets;
     const bwl=$('#bw-log'); if(bwl) bwl.onclick=openBodyweight;
+    const si=$('#auth-signin'); if(si) si.onclick=openSignIn;
+    const so=$('#auth-signout'); if(so) so.onclick=async ()=>{ await signOut(); state.user=null; render(); };
     const ps=$('#plan-start'); if(ps) ps.onclick=openPlanStart;
     const ex=$('#bk-export'); if(ex) ex.onclick=exportBackup;
     const im=$('#bk-import'), f=$('#bk-file');
