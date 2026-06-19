@@ -13,6 +13,8 @@ import { drawCard, saveCanvas, shareCanvas } from './share.js';
 import { SPRINT_DISTANCES, sprintResults, bestByDistance, loggedDistances, seriesForDistance } from './sprints.js';
 import { initSync } from './sync.js';
 import { addDays, sortByDate, findToday as findTodaySession, computeStreak, statusOf } from './logic.js';
+import { TYPE, NIGGLE, todayISO, round, esc, slug, fmtDate, monthLabel, pill } from './format.js';
+import { buildBackup, validateBackup, normalizeImported } from './backup.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 
@@ -36,19 +38,8 @@ const state = { data: null, view: 'today', logs: {}, share: { type: 'session', s
   sprintDist: null, targets: {}, assignment: null, bodyweight: [],
   histView: 'calendar', histMonth: null };
 const targetsKey = () => `targets:${ATHLETE_ID}`;
-const slug = s => s.replace(/[^a-z0-9]+/gi, '-');
-
-const TYPE = {
-  HIGH:{label:'HIGH',cls:'t-high'}, DELOAD:{label:'DELOAD',cls:'t-deload'},
-  TAPER:{label:'TAPER',cls:'t-taper'}, LOW:{label:'LOW',cls:'t-low'},
-  RECOVERY:{label:'REST',cls:'t-rest'}, RACE:{label:'RACE',cls:'t-race'}
-};
-const NIGGLE = ['None','Monitor','Modify','Stop'];
-
-const todayISO = () => { const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
-// Round to kill floating-point artifacts (e.g. 3.7399999 → 3.74). null stays null.
-const round = (v, dp) => v==null ? null : Math.round(v * 10**dp) / 10**dp;
-// (addDays lives in logic.js)
+// Presentation helpers (TYPE, NIGGLE, todayISO, round, esc, slug, fmtDate,
+// monthLabel, pill) live in format.js; addDays + status logic live in logic.js.
 // Bind the relative template to the calendar: session.date = assignment start + offset.
 // Leaves any session that already has a date (legacy seed) untouched.
 function materializeDates(){
@@ -94,34 +85,24 @@ function quickDone(id){ const se=byId(id); setLog(id, { done:true, date: se?se.d
 function toggleDone(id){ const lg=getLog(id)||{}; const se=byId(id); setLog(id, { done:!lg.done, date: se?se.date:todayISO() }); render(); }
 
 // --- Backup: export/import logs as JSON (local data can be cleared by iOS) ---
+// Pure serialise/validate/normalise live in backup.js; here we wire them to
+// the file download, IndexedDB writes, and the in-memory cache.
 function exportBackup(){
-  const data = { app:'SAH Elite Performance', type:'sah-backup', version:1,
-    athleteId:ATHLETE_ID, planId:PLAN_ID,
-    exportedAt:new Date().toISOString(), logs:Object.values(state.logs) };
+  const data = buildBackup(Object.values(state.logs),
+    { athleteId:ATHLETE_ID, planId:PLAN_ID, exportedAt:new Date().toISOString() });
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
   const url = URL.createObjectURL(blob); const a = document.createElement('a');
   a.href = url; a.download = `sah-backup-${todayISO()}.json`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url), 1000);
 }
-// Validate a parsed backup: accept a {logs:[...]} object or a bare array;
-// keep only well-formed entries (object with a string sessionId).
-function validateBackup(data){
-  const raw = Array.isArray(data) ? data : (data && Array.isArray(data.logs) ? data.logs : null);
-  if(!raw) return { ok:false, error:"That file isn't a SAH backup — no logs found." };
-  const logs = raw.filter(l => l && typeof l==='object' && typeof l.sessionId==='string');
-  if(!logs.length) return { ok:false, error:'No valid log entries were found in that file.' };
-  return { ok:true, logs };
-}
 function applyBackup(logs){
-  let n=0;
-  for(const lg of logs){
-    const rec = { athleteId:ATHLETE_ID, planId:PLAN_ID, ...lg, sessionId:lg.sessionId };
+  const recs = normalizeImported(logs, { athleteId:ATHLETE_ID, planId:PLAN_ID });
+  for(const rec of recs){
     state.logs[rec.sessionId] = rec;
     putLog(rec).catch(e=>console.error('Import write failed', e));
-    n++;
   }
-  return n;
+  return recs.length;
 }
 function importNotice(title, body){
   openSheet(`<h3>${esc(title)}</h3><p class="sheet-note">${esc(body)}</p>
@@ -188,9 +169,6 @@ function sync(){ document.querySelectorAll('#tabbar button').forEach(b => { cons
 const sorted = () => sortByDate(state.data.sessions);
 function findToday(){ return findTodaySession(state.data.sessions, todayISO()); }
 function byId(id){ return state.data.sessions.find(x=>x.id===id); }
-const pill = t => { const m=TYPE[t]||TYPE.LOW; return `<span class="pill ${m.cls}">${m.label}</span>`; };
-const esc = s => (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-function fmtDate(iso){ return new Date(iso+'T00:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}); }
 
 function card(se){
   const lg = getLog(se.id)||{};
@@ -242,7 +220,6 @@ function statusDot(se, lg){
   const cls = statusOf(se, lg||{}, todayISO());
   return { cls, char: cls==='done' ? '✓' : '○' };
 }
-const monthLabel = iso => new Date(iso+'T00:00').toLocaleDateString('en-AU',{month:'long',year:'numeric'});
 // Calendar / List toggle (+ a "jump to today" link in list mode).
 function historyHead(active){
   return `<div class="hist-head">
