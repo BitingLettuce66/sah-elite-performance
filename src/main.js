@@ -535,8 +535,36 @@ function openLog(id){
       delLog(id); closeSheet(); render(); }; }
 }
 
-function openSheet(html){ $('#sheet').innerHTML=html; $('#modal').classList.remove('hidden'); }
-function closeSheet(){ $('#modal').classList.add('hidden'); }
+// --- Modal/sheet: focus management + keyboard (Escape to close, Tab trapped) ---
+let _lastFocus = null;   // element to restore focus to when the sheet closes
+let _sheetKeys = null;   // active keydown handler while a sheet is open
+// Visible, enabled, focusable elements inside a container, in DOM order.
+function focusablesIn(el){
+  return [...el.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])')]
+    .filter(n => !n.disabled && n.offsetParent !== null);
+}
+function openSheet(html){
+  _lastFocus = document.activeElement;       // remember what to return focus to
+  const sheet = $('#sheet'); sheet.innerHTML = html;
+  $('#modal').classList.remove('hidden');
+  const items = focusablesIn(sheet);
+  (items[0] || sheet).focus();               // move focus into the dialog
+  _sheetKeys = e => {
+    if(e.key === 'Escape'){ e.preventDefault(); closeSheet(); return; }
+    if(e.key !== 'Tab') return;
+    const f = focusablesIn(sheet); if(!f.length) return;
+    const first = f[0], last = f[f.length-1];
+    if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+  };
+  document.addEventListener('keydown', _sheetKeys);
+}
+function closeSheet(){
+  $('#modal').classList.add('hidden');
+  if(_sheetKeys){ document.removeEventListener('keydown', _sheetKeys); _sheetKeys = null; }
+  if(_lastFocus && _lastFocus.focus){ try{ _lastFocus.focus(); }catch(e){} }
+  _lastFocus = null;
+}
 $('#modal').addEventListener('click',e=>{ if(e.target.id==='modal') closeSheet(); });
 
 boot();
