@@ -177,6 +177,7 @@ async function boot(){
   materializeDates();   // compute session.date from the active assignment
   initSync();           // no-op while disabled; cloud sync slots in here later
   document.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => { if(b.dataset.view==='history') state._scrollHistory=true; state.view=b.dataset.view; sync(); render(); });
+  const sb=$('#settings-btn'); if(sb) sb.onclick=openSettings;
   sync(); render();
   if(!state.storageOk) showToast('Storage is unavailable — anything you log won’t be saved this session.', null, null, 6000);
 }
@@ -290,21 +291,7 @@ function viewProgress(){
    ${sprintProgressCard()}
    ${chartCard('Readiness','/10','readiness')}
    ${bwCard()}
-   ${chartCard('Adherence','sessions','adh')}
-   <section class="backup">
-     <h3>Plan</h3>
-     <p>Programme starts <b>${state.assignment?fmtDate(state.assignment.startDate):'—'}</b> · ${state.data.sessions.length} sessions, scheduled relative to that date.</p>
-     <div class="backup-actions"><button class="btn-cancel" id="plan-start">Change start date</button></div>
-   </section>
-   <section class="backup">
-     <h3>Your data</h3>
-     <p>Logs live only on this device. Export a backup regularly — iOS can clear local storage if the app sits unused.</p>
-     <div class="backup-actions">
-       <button class="btn-cancel" id="bk-export">Export backup</button>
-       <button class="btn-cancel" id="bk-import">Import backup</button>
-     </div>
-     <input type="file" id="bk-file" accept="application/json,.json" hidden>
-   </section>`;
+   ${chartCard('Adherence','sessions','adh')}`;
 }
 // Sprint PBs — fastest time per distance, with optional target.
 function sprintPBsCard(){
@@ -366,6 +353,32 @@ function sprintRowHTML(r={}){
     <input class="sr-time" type="number" step="0.01" inputmode="decimal" placeholder="sec" value="${r.time??''}">
     <button type="button" class="sr-del" aria-label="Remove">×</button>
   </div>`;
+}
+
+// Settings home — plan + data controls, reachable from the top-bar gear so they
+// don't clutter the Progress dashboard.
+function openSettings(){
+  openSheet(`<h3>Settings</h3>
+    <section class="set-group">
+      <h4>Plan</h4>
+      <p class="set-note">Programme starts <b>${state.assignment?fmtDate(state.assignment.startDate):'—'}</b> · ${state.data.sessions.length} sessions, scheduled relative to that date.</p>
+      <button class="btn-cancel" id="set-plan-start">Change start date</button>
+    </section>
+    <section class="set-group">
+      <h4>Your data</h4>
+      <p class="set-note">Logs live only on this device. Export a backup regularly — iOS can clear local storage if the app sits unused.</p>
+      <div class="backup-actions">
+        <button class="btn-cancel" id="set-export">Export backup</button>
+        <button class="btn-cancel" id="set-import">Import backup</button>
+      </div>
+      <input type="file" id="set-file" accept="application/json,.json" hidden>
+    </section>
+    <div class="sheet-actions"><button class="btn-save" id="x-done">Done</button></div>`);
+  $('#x-done').onclick = closeSheet;
+  $('#set-plan-start').onclick = openPlanStart;
+  $('#set-export').onclick = exportBackup;
+  const im=$('#set-import'), f=$('#set-file');
+  if(im&&f){ im.onclick=()=>f.click(); f.onchange=()=>{ if(f.files[0]) importBackup(f.files[0]); f.value=''; }; }
 }
 
 // Change the plan's start date — shifts the whole schedule (the assignment),
@@ -469,10 +482,6 @@ function render(){
     $('#view').querySelectorAll('.chip[data-dist]').forEach(c=>c.onclick=()=>{ state.sprintDist=c.dataset.dist; render(); });
     const tg=$('#pb-targets'); if(tg) tg.onclick=openTargets;
     const bwl=$('#bw-log'); if(bwl) bwl.onclick=openBodyweight;
-    const ps=$('#plan-start'); if(ps) ps.onclick=openPlanStart;
-    const ex=$('#bk-export'); if(ex) ex.onclick=exportBackup;
-    const im=$('#bk-import'), f=$('#bk-file');
-    if(im&&f){ im.onclick=()=>f.click(); f.onchange=()=>{ if(f.files[0]) importBackup(f.files[0]); f.value=''; }; }
   }
   if(v==='share'){
     const cv=$('#share-canvas');
