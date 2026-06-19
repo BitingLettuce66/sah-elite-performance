@@ -33,7 +33,8 @@ const updateSW = registerSW({
 // state.logs is an in-memory cache of all logs, loaded once from IndexedDB on
 // boot so render code can read them synchronously.
 const state = { data: null, view: 'today', logs: {}, share: { type: 'session', size: 'story' },
-  sprintDist: null, targets: {}, assignment: null, bodyweight: [] };
+  sprintDist: null, targets: {}, assignment: null, bodyweight: [],
+  histView: 'calendar', histMonth: null };
 const targetsKey = () => `targets:${ATHLETE_ID}`;
 const slug = s => s.replace(/[^a-z0-9]+/gi, '-');
 
@@ -242,7 +243,20 @@ function statusDot(se, lg){
   return { cls, char: cls==='done' ? '✓' : '○' };
 }
 const monthLabel = iso => new Date(iso+'T00:00').toLocaleDateString('en-AU',{month:'long',year:'numeric'});
+// Calendar / List toggle (+ a "jump to today" link in list mode).
+function historyHead(active){
+  return `<div class="hist-head">
+    <div class="hist-toggle">
+      <button data-hview="calendar" class="${active==='calendar'?'sel':''}">Calendar</button>
+      <button data-hview="list" class="${active==='list'?'sel':''}">List</button>
+    </div>
+    ${active==='list'?`<button class="link-btn" id="hist-today">Today</button>`:''}
+  </div>`;
+}
 function viewHistory(){
+  return state.histView==='list' ? viewHistoryList() : viewHistoryCalendar();
+}
+function viewHistoryList(){
   const t = todayISO();
   let lastMonth = '';
   const rows = sorted().map(se => {
@@ -255,7 +269,46 @@ function viewHistory(){
       <button class="row-dot ${d.cls}" data-done="${se.id}" aria-label="toggle done">${d.char}</button>
     </div>`;
   }).join('');
-  return `<div class="hist-head"><p class="eyebrow">History</p><button class="link-btn" id="hist-today">Today</button></div><div class="list">${rows}</div>`;
+  return `${historyHead('list')}<div class="list">${rows}</div>`;
+}
+// The month currently shown in the calendar ('YYYY-MM'), defaulting to today's.
+const calMonth = () => state.histMonth || todayISO().slice(0,7);
+function shiftMonth(ym, delta){ const [y,m]=ym.split('-').map(Number); const d=new Date(y, m-1+delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+// Map each session to its (computed) date for O(1) calendar lookup.
+function sessionsByDate(){ const m={}; for(const s of state.data.sessions) m[s.date]=s; return m; }
+function viewHistoryCalendar(){
+  const ym = calMonth(); const [y,m] = ym.split('-').map(Number);
+  const t = todayISO();
+  const byDate = sessionsByDate();
+  const startWeekday = (new Date(y, m-1, 1).getDay()+6)%7;   // 0=Mon … 6=Sun
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const dow = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<span class="cal-dow">${d}</span>`).join('');
+  let cells = '';
+  for(let i=0;i<startWeekday;i++) cells += `<span class="cal-cell empty"></span>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const iso = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const se = byDate[iso];
+    const isToday = iso===t ? ' today' : '';
+    if(!se){ cells += `<span class="cal-cell${isToday}"><span class="cal-num">${d}</span></span>`; continue; }
+    const st = statusOf(se, getLog(se.id)||{}, t);   // done | missed | future
+    cells += `<button class="cal-cell has${isToday}" data-id="${se.id}" aria-label="${fmtDate(iso)} — ${esc(se.focus)}">
+      <span class="cal-num">${d}</span><span class="cal-dot ${st}"></span></button>`;
+  }
+  const label = new Date(y, m-1, 1).toLocaleDateString('en-AU',{month:'long',year:'numeric'});
+  return `${historyHead('calendar')}
+    <div class="cal-nav">
+      <button class="cal-arrow" id="cal-prev" aria-label="Previous month">‹</button>
+      <span class="cal-month">${label}</span>
+      <button class="cal-arrow" id="cal-next" aria-label="Next month">›</button>
+    </div>
+    <div class="cal-grid cal-head">${dow}</div>
+    <div class="cal-grid">${cells}</div>
+    <div class="cal-legend">
+      <span><i class="cal-dot done"></i>Done</span>
+      <span><i class="cal-dot missed"></i>Missed</span>
+      <span><i class="cal-dot future"></i>Upcoming</span>
+    </div>`;
 }
 function streak(){ return computeStreak(state.data.sessions, state.logs, todayISO()); }
 // Next deload / taper / race / test-gate on or after today.
@@ -505,9 +558,17 @@ function render(){
   $('#view').querySelectorAll('.row-dot').forEach(b=>b.onclick=()=>toggleDone(b.dataset.done));
   $('#view').querySelectorAll('.wk-cell, .nextup').forEach(b=>b.onclick=()=>openDetail(b.dataset.id));
   if(v==='history'){
-    const scrollToToday=()=>{ const r=$('#view .row.is-today'); if(r) r.scrollIntoView({block:'center'}); };
-    const tbtn=$('#hist-today'); if(tbtn) tbtn.onclick=scrollToToday;
-    if(state._scrollHistory){ state._scrollHistory=false; requestAnimationFrame(scrollToToday); }
+    $('#view').querySelectorAll('.hist-toggle button[data-hview]').forEach(b=>b.onclick=()=>{
+      state.histView=b.dataset.hview; if(b.dataset.hview==='list') state._scrollHistory=true; render(); });
+    if(state.histView==='calendar'){
+      const prev=$('#cal-prev'); if(prev) prev.onclick=()=>{ state.histMonth=shiftMonth(calMonth(),-1); render(); };
+      const next=$('#cal-next'); if(next) next.onclick=()=>{ state.histMonth=shiftMonth(calMonth(),+1); render(); };
+      $('#view').querySelectorAll('.cal-cell.has').forEach(c=>c.onclick=()=>openDetail(c.dataset.id));
+    } else {
+      const scrollToToday=()=>{ const r=$('#view .row.is-today'); if(r) r.scrollIntoView({block:'center'}); };
+      const tbtn=$('#hist-today'); if(tbtn) tbtn.onclick=scrollToToday;
+      if(state._scrollHistory){ state._scrollHistory=false; requestAnimationFrame(scrollToToday); }
+    }
   }
   if(v==='progress'){
     drawProgressCharts(state.data.sessions, state.logs,
