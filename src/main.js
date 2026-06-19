@@ -274,8 +274,9 @@ function viewHistoryCalendar(){
     const isToday = iso===t ? ' today' : '';
     if(!se){ cells += `<span class="cal-cell${isToday}"><span class="cal-num">${d}</span></span>`; continue; }
     const st = statusOf(se, getLog(se.id)||{}, t);   // done | missed | future
-    cells += `<button class="cal-cell has${isToday}" data-id="${se.id}" aria-label="${fmtDate(iso)} — ${esc(se.focus)}">
-      <span class="cal-num">${d}</span><span class="cal-dot ${st}"></span></button>`;
+    const stWord = st==='done' ? 'done' : st==='missed' ? 'missed' : 'upcoming';   // status in words, not colour alone
+    cells += `<button class="cal-cell has ${st}${isToday}" data-id="${se.id}" aria-label="${fmtDate(iso)} — ${esc(se.focus)} — ${stWord}">
+      <span class="cal-num">${d}</span><span class="cal-dot ${st}" aria-hidden="true"></span></button>`;
   }
   const label = new Date(y, m-1, 1).toLocaleDateString('en-AU',{month:'long',year:'numeric'});
   return `${historyHead('calendar')}
@@ -698,6 +699,14 @@ function focusablesIn(el){
 function openSheet(html){
   _lastFocus = document.activeElement;       // remember what to return focus to
   const sheet = $('#sheet'); sheet.innerHTML = html;
+  // a11y: name the dialog by its heading, and link each field label to its control.
+  const heading = sheet.querySelector('h3');
+  if(heading){ if(!heading.id) heading.id = 'sheet-title'; sheet.setAttribute('aria-labelledby', heading.id); }
+  else sheet.removeAttribute('aria-labelledby');
+  sheet.querySelectorAll('.field').forEach((fld,i)=>{
+    const lab = fld.querySelector('label'); const ctl = fld.querySelector('input,select,textarea');
+    if(lab && ctl){ if(!ctl.id) ctl.id = `fld-${i}`; lab.htmlFor = ctl.id; }
+  });
   $('#modal').classList.remove('hidden');
   const items = focusablesIn(sheet);
   (items[0] || sheet).focus();               // move focus into the dialog
