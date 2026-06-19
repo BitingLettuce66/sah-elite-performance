@@ -1,5 +1,5 @@
 {
-  "projectId": null,
+  "projectId": "848573aa-4a47-42d2-893d-e23ab095e850",
   "shape": "tokens-only",
   "approach": "Lightweight hand-built brand + tokens sync (app is vanilla JS with no component library; see NOTES.md).",
   "uploadDir": "ds-bundle",
