@@ -15,11 +15,9 @@
 <body>
   <div id="app">
     <header id="topbar">
-      <h1 class="brand">SAH <span>Elite Performance</span></h1>
-      <div class="top-right">
-        <div id="phase" class="phase"></div>
-        <button id="settings-btn" aria-label="Settings"><span aria-hidden="true">⚙</span></button>
-      </div>
+      <button id="avatar-btn" class="avatar" aria-label="Settings">S</button>
+      <h1 class="brand">SAH <span>Elite</span></h1>
+      <div id="phase" class="phase"></div>
     </header>
 
     <main id="view" aria-live="polite">
@@ -27,10 +25,10 @@
     </main>
 
     <nav id="tabbar" aria-label="Primary">
-      <button data-view="today" class="active" aria-label="Today"><span class="ic" aria-hidden="true">◎</span>Today</button>
-      <button data-view="history" aria-label="History"><span class="ic" aria-hidden="true">▤</span>History</button>
-      <button data-view="progress" aria-label="Progress"><span class="ic" aria-hidden="true">▰</span>Progress</button>
-      <button data-view="share" aria-label="Share"><span class="ic" aria-hidden="true">↗</span>Share</button>
+      <button data-view="today" class="active" aria-label="Today"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Today</button>
+      <button data-view="history" aria-label="History"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></svg>History</button>
+      <button data-view="progress" aria-label="Progress"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 20v-5M12 20v-9M18 20V8"/></svg>Progress</button>
+      <button data-view="share" aria-label="Share"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M8 7l4-4 4 4M5 12v7a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-7"/></svg>Share</button>
     </nav>
   </div>
 

@@ -159,10 +159,10 @@ async function boot(){
   materializeDates();   // compute session.date from the active assignment
   initSync();           // no-op while disabled; cloud sync slots in here later
   document.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => { if(b.dataset.view==='history') state._scrollHistory=true; state.view=b.dataset.view; sync(); render(); });
-  const sb=$('#settings-btn'); if(sb) sb.onclick=openSettings;
+  const sb=$('#avatar-btn'); if(sb) sb.onclick=openSettings;
   sync(); render();
   if(!state.storageOk) showToast('Storage is unavailable — anything you log won’t be saved this session.', null, null, 6000);
-  else await maybeOnboard();   // first-run welcome (no-op for returning users)
+  else await checkReturn();   // first-run welcome or welcome-back (no-op otherwise)
 }
 function sync(){ document.querySelectorAll('#tabbar button').forEach(b => { const on=b.dataset.view===state.view; b.classList.toggle('active', on); if(on) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); }); }
 
@@ -386,20 +386,38 @@ function sprintRowHTML(r={}){
   </div>`;
 }
 
-// First run: greet a brand-new user once and let them confirm the start date.
-// Skipped for anyone who already has logs (e.g. restored a backup) and never
-// shown again once dismissed. Needs storage to remember the flag.
+// On boot, greet the user appropriately: a brand-new install gets a one-time
+// welcome (openWelcome); a user returning after a gap gets a "welcome back"
+// prompt (openWelcomeBack). Last-seen is stamped each visit so the gap is
+// measured from the last actual open. Needs storage to remember the flags.
 const ONBOARDED_KEY = () => 'onboarded:'+ATHLETE_ID;
-async function maybeOnboard(){
+const LAST_SEEN_KEY = () => 'lastSeen:'+ATHLETE_ID;
+const RETURN_GAP_DAYS = 4;   // a gap at least this long triggers "welcome back"
+const daysBetween = (a, b) => Math.round((new Date(b+'T00:00') - new Date(a+'T00:00')) / 86400000);
+async function checkReturn(){
   if(!state.storageOk) return;
-  let seen;
-  try { seen = await getSetting(ONBOARDED_KEY()); } catch(e){ return; }
-  if(seen) return;
-  if(Object.keys(state.logs).length){            // existing data — mark seen silently
-    try { await putSetting(ONBOARDED_KEY(), true); } catch(e){}
-    return;
+  let onboarded, lastSeen;
+  try { onboarded = await getSetting(ONBOARDED_KEY()); lastSeen = await getSetting(LAST_SEEN_KEY()); }
+  catch(e){ return; }
+  putSetting(LAST_SEEN_KEY(), todayISO()).catch(()=>{});   // stamp this visit for next time
+  if(!onboarded){
+    if(Object.keys(state.logs).length){ putSetting(ONBOARDED_KEY(), true).catch(()=>{}); return; }  // existing data — mark seen silently
+    openWelcome(); return;
   }
-  openWelcome();
+  if(lastSeen){ const gap = daysBetween(lastSeen, todayISO()); if(gap >= RETURN_GAP_DAYS) openWelcomeBack(gap); }
+}
+// Returning after a gap: pick up today, re-anchor the plan, or review misses.
+function openWelcomeBack(gap){
+  openSheet(`<h3>Welcome back 👋</h3>
+    <p class="sheet-note">It's been about ${gap} days. Jump back into today's session, re-anchor your plan to start fresh from now, or review what you missed.</p>
+    <div class="wb-actions">
+      <button class="btn-save" id="wb-continue">Continue training</button>
+      <button class="btn-cancel" id="wb-restart">Adjust plan start</button>
+      <button class="link-btn" id="wb-missed">See what I missed</button>
+    </div>`);
+  $('#wb-continue').onclick = () => { state.view='today'; closeSheet(); sync(); render(); };
+  $('#wb-restart').onclick = openPlanStart;
+  $('#wb-missed').onclick = () => { state.view='history'; state.histView='calendar'; closeSheet(); sync(); render(); };
 }
 function openWelcome(){
   const cur = state.assignment ? state.assignment.startDate : state.data.startDate;
