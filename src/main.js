@@ -180,6 +180,7 @@ async function boot(){
   const sb=$('#settings-btn'); if(sb) sb.onclick=openSettings;
   sync(); render();
   if(!state.storageOk) showToast('Storage is unavailable — anything you log won’t be saved this session.', null, null, 6000);
+  else await maybeOnboard();   // first-run welcome (no-op for returning users)
 }
 function sync(){ document.querySelectorAll('#tabbar button').forEach(b => { const on=b.dataset.view===state.view; b.classList.toggle('active', on); if(on) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); }); }
 
@@ -353,6 +354,38 @@ function sprintRowHTML(r={}){
     <input class="sr-time" type="number" step="0.01" inputmode="decimal" placeholder="sec" value="${r.time??''}">
     <button type="button" class="sr-del" aria-label="Remove">×</button>
   </div>`;
+}
+
+// First run: greet a brand-new user once and let them confirm the start date.
+// Skipped for anyone who already has logs (e.g. restored a backup) and never
+// shown again once dismissed. Needs storage to remember the flag.
+const ONBOARDED_KEY = () => 'onboarded:'+ATHLETE_ID;
+async function maybeOnboard(){
+  if(!state.storageOk) return;
+  let seen;
+  try { seen = await getSetting(ONBOARDED_KEY()); } catch(e){ return; }
+  if(seen) return;
+  if(Object.keys(state.logs).length){            // existing data — mark seen silently
+    try { await putSetting(ONBOARDED_KEY(), true); } catch(e){}
+    return;
+  }
+  openWelcome();
+}
+function openWelcome(){
+  const cur = state.assignment ? state.assignment.startDate : state.data.startDate;
+  openSheet(`<h3>Welcome 👋</h3>
+    <p class="sheet-note">This is your training log — pre-loaded with your full programme. It works completely offline, and everything stays on this device.</p>
+    <p class="sheet-note">Your programme starts on the date below. Change it if you'd like a different start day — you can always adjust it later in Settings.</p>
+    <div class="field"><label>Start date</label><input id="ob-start" type="date" value="${cur}"></div>
+    <div class="sheet-actions"><button class="btn-save" id="ob-go">Start training</button></div>`);
+  $('#ob-go').onclick = async () => {
+    const v = $('#ob-start').value;
+    if(v && v!==cur){ state.assignment = { ...state.assignment, startDate:v };
+      try{ await putSetting('assignment:'+ATHLETE_ID, state.assignment); }catch(e){ console.error('Saving start failed', e); }
+      materializeDates(); }
+    try{ await putSetting(ONBOARDED_KEY(), true); }catch(e){}
+    closeSheet(); render();
+  };
 }
 
 // Settings home — plan + data controls, reachable from the top-bar gear so they
