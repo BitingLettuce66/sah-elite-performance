@@ -33,8 +33,23 @@ const _listeners = new Set();
 const _emit = () => { for (const fn of _listeners) { try { fn(getStatus()); } catch (e) {} } };
 function setState(state, extra) { _status = { ..._status, state, ...extra }; _emit(); }
 
+/**
+ * @typedef {Object} SyncStatus
+ * @property {'local-only'|'syncing'|'idle'|'error'} state
+ * @property {number} pending   Outbox mutations awaiting push.
+ * @property {string|null} lastSyncAt  ISO timestamp of the last successful sync.
+ * @property {string|null} lastError
+ */
+
+/** @returns {boolean} True only when sync is built, auth is configured, and a session exists. */
 export function isEnabled() { return SYNC_ENABLED && AUTH_ENABLED && !!supabase && !!_session; }
+/** @returns {SyncStatus} A snapshot of the current sync status. */
 export function getStatus() { return { ..._status }; }
+/**
+ * Subscribe to sync-status changes (drives the Settings status line).
+ * @param {(s: SyncStatus) => void} fn
+ * @returns {() => void} Unsubscribe.
+ */
 export function onStatusChange(fn) { _listeners.add(fn); return () => _listeners.delete(fn); }
 function uid() { return _session && _session.user ? _session.user.id : null; }
 

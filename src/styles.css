@@ -173,8 +173,6 @@ details p{font-size:13.5px;color:var(--text);line-height:1.55;margin:8px 2px 4px
 .stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;}
 .stat b{display:block;font-size:34px;font-weight:700;color:var(--accent);}
 .stat span{font-size:12px;color:var(--muted);letter-spacing:.04em;}
-.soon{background:var(--surface);border:1px dashed var(--line);border-radius:var(--radius);padding:18px;color:var(--muted);font-size:14px;line-height:1.6;}
-.soon ul{margin:8px 0 0;padding-left:18px;} .soon li{margin:3px 0;}
 .empty{text-align:center;color:var(--muted);padding:60px 0;font-size:18px;}
 
 /* Progress — checkpoint banner + chart cards */
