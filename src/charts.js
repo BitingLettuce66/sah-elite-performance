@@ -3,20 +3,28 @@
    squat load, hip-thrust load, sprint times, adherence.
    Each chart shows an intentional empty state before data exists. */
 
-import { Chart, registerables } from 'chart.js';
 import { seriesForDistance } from './sprints.js';
-Chart.register(...registerables);
 
 const C = {
   accent: '#7FB2D9', silver: '#C9CBD1', muted: '#8A8A90',
   grid: 'rgba(255,255,255,.06)', surface: '#1C1C20', text: '#ECEAE3',
 };
 
-// Dark, minimal defaults to match the Quiet-Luxury theme.
-Chart.defaults.color = C.muted;
-Chart.defaults.font.family =
-  "-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',Roboto,sans-serif";
-Chart.defaults.font.size = 11;
+// Chart.js is lazy-loaded (dynamic import) the first time the Progress view
+// draws, so it stays OUT of the initial app bundle (it's the heaviest dep and
+// only Progress needs it). Registered + themed once on first load.
+let _Chart = null;
+async function loadChart() {
+  if (_Chart) return _Chart;
+  const m = await import('chart.js');
+  m.Chart.register(...m.registerables);
+  m.Chart.defaults.color = C.muted;
+  m.Chart.defaults.font.family =
+    "-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',Roboto,sans-serif";
+  m.Chart.defaults.font.size = 11;
+  _Chart = m.Chart;
+  return _Chart;
+}
 
 const fmtDate = iso => new Date(iso + 'T00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
 
@@ -67,7 +75,7 @@ function lineChart(canvasId, wrapId, pts, { color, empty, unit }) {
   if (!pts.length) return emptyState(wrapId, empty);
   const el = document.getElementById(canvasId);
   if (!el) return;
-  instances.push(new Chart(el, {
+  instances.push(new _Chart(el, {
     type: 'line',
     data: {
       labels: pts.map(p => fmtDate(p.date)),
@@ -108,7 +116,7 @@ function sprintChart(sessions, logs, opts = {}) {
       pointRadius: 0, fill: false,
     });
   }
-  instances.push(new Chart(el, {
+  instances.push(new _Chart(el, {
     type: 'line',
     data: { labels: pts.map(p => fmtDate(p.date)), datasets },
     options: { ...baseOpts(), plugins: { ...baseOpts().plugins,
@@ -127,7 +135,7 @@ function adherenceChart(sessions, logs) {
   if (!pts.length) return emptyState('wrap-adh', 'Mark sessions done and your adherence builds here.');
   const el = document.getElementById('ch-adh');
   if (!el) return;
-  instances.push(new Chart(el, {
+  instances.push(new _Chart(el, {
     type: 'line',
     data: {
       labels: pts.map(p => fmtDate(p.date)),
@@ -146,8 +154,9 @@ function adherenceChart(sessions, logs) {
 
 // Draw all charts; called after the Progress view's HTML is in the DOM.
 // opts: { sprintDist, sprintTarget } for the sprint progression chart.
-export function drawProgressCharts(sessions, logs, opts = {}) {
+export async function drawProgressCharts(sessions, logs, opts = {}) {
   destroyCharts();
+  try { await loadChart(); } catch (e) { console.warn('Charts unavailable (Chart.js failed to load)', e); return; }
   const sorted = [...sessions].sort((a, b) => a.date.localeCompare(b.date));
   lineChart('ch-squat', 'wrap-squat', valueSeries(sorted, logs, 'squatKg'),
     { color: C.accent, unit: 'kg', empty: 'Log a squat top-set (kg) to start this chart.' });
