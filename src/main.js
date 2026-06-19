@@ -11,7 +11,7 @@ import { loadAllLogs, putLog, deleteLog, migrateFromLocalStorage, getSetting, pu
 import { drawProgressCharts, destroyCharts } from './charts.js';
 import { drawCard, saveCanvas, shareCanvas } from './share.js';
 import { SPRINT_DISTANCES, sprintResults, bestByDistance, loggedDistances, seriesForDistance } from './sprints.js';
-import { initSync } from './sync.js';
+import { initSync, getStatus } from './sync.js';
 import { addDays, sortByDate, findToday as findTodaySession, computeStreak, statusOf } from './logic.js';
 import { TYPE, NIGGLE, todayISO, round, esc, slug, fmtDate, monthLabel, pill } from './format.js';
 import { buildBackup, validateBackup, normalizeImported } from './backup.js';
@@ -442,12 +442,20 @@ function openWelcome(){
 }
 
 // Account section of Settings (Phase 1 auth). Empty when auth isn't configured.
+// Plain-English cloud-sync status for the Account section.
+function syncStatusText(){
+  const s = getStatus();
+  if(s.state==='syncing') return 'Syncing your training to the cloud…';
+  if(s.state==='error') return 'Your training is safe on this device; cloud sync hit a snag and will retry.';
+  if(s.state==='idle') return 'Your training is backed up and synced across your devices.' + (s.pending?` (${s.pending} change${s.pending===1?'':'s'} pending)`:'');
+  return 'Your training is on this device and will sync when you’re online.';
+}
 function accountGroup(){
   if(!AUTH_ENABLED) return '';
   if(state.user){
     return `<section class="set-group">
       <h4>Account</h4>
-      <p class="set-note">Signed in as <b>${esc(state.user.email||'your account')}</b>. Your data still lives on this device — cloud sync turns on in the next step.</p>
+      <p class="set-note">Signed in as <b>${esc(state.user.email||'your account')}</b>. ${syncStatusText()}</p>
       <button class="btn-cancel" id="set-signout">Sign out</button>
     </section>`;
   }
