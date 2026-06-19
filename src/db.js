@@ -99,6 +99,7 @@ export async function allOutbox() { return (await db()).getAll(OUTBOX); }
 export async function removeFromOutbox(id) { return (await db()).delete(OUTBOX, id); }
 export async function updateOutbox(mut) { return (await db()).put(OUTBOX, mut); }  // in-place (attempt counter / dead flag)
 export async function clearOutbox() { return (await db()).clear(OUTBOX); }
+export async function clearLogs() { return (await db()).clear(LOGS); }   // reset local logs (device reset / tests)
 
 // --- Quiet writers + raw reads for sync.js (apply pulled rows WITHOUT
 //     re-queueing them, and read records including tombstones) ---
