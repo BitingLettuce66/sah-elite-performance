@@ -16,3 +16,6 @@ CLAUDE.local.md
 
 # Night-shift work log — kept private
 NIGHT-SHIFT-LOG.md
+
+# Design-sync upload staging (assembled from .design-sync/ + src/styles.css)
+ds-bundle/

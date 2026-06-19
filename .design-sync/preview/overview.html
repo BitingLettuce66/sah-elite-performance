@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SAH Elite — Design System overview</title>
+  <!-- styles.css sits at the bundle root; this preview lives in _preview/ -->
+  <link rel="stylesheet" href="../styles.css" />
+  <style>
+    /* preview-only scaffolding (not part of the design system) */
+    body{padding:0;}
+    .ds-swatches{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:0 0 18px;}
+    .ds-sw{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--muted);}
+    .ds-chip{width:26px;height:26px;border-radius:8px;border:1px solid var(--line);flex:none;}
+    .ds-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;}
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <button class="avatar" aria-label="Settings">S</button>
+      <h1 class="brand">SAH <span>Elite</span></h1>
+      <div class="phase">P1 Accel · Wk 1</div>
+    </header>
+
+    <main id="view">
+      <p class="eyebrow">Foundations</p>
+      <div class="ds-swatches">
+        <span class="ds-sw"><span class="ds-chip" style="background:var(--accent)"></span>accent</span>
+        <span class="ds-sw"><span class="ds-chip" style="background:var(--silver)"></span>silver</span>
+        <span class="ds-sw"><span class="ds-chip" style="background:var(--green)"></span>green</span>
+        <span class="ds-sw"><span class="ds-chip" style="background:var(--surface2)"></span>surface2</span>
+      </div>
+
+      <p class="eyebrow">Pills</p>
+      <div class="ds-row">
+        <span class="pill t-high">HIGH</span>
+        <span class="pill t-deload">DELOAD</span>
+        <span class="pill t-low">LOW</span>
+        <span class="pill t-rest">REST</span>
+        <span class="pill t-race">RACE</span>
+      </div>
+
+      <p class="eyebrow">Session card</p>
+      <article class="card">
+        <div class="card-top">
+          <span class="pill t-high">HIGH</span>
+          <span>P1 Accel · Wk 1 · Fri</span>
+          <span class="done">✓ Logged</span>
+        </div>
+        <h2 class="card-title">Establish</h2>
+        <div class="meta">Fri, 19 Jun · Track</div>
+        <div class="callout sprint"><span class="co-h">Sprint</span>6×20m @≤90%, walk-back recovery. Quality first.</div>
+        <div class="callout gym"><span class="co-h">Gym</span>Back squat 3×5 · hip thrust · Nordics · core.</div>
+        <div class="card-actions">
+          <button class="btn-done">✓ Mark done</button>
+          <button class="btn-log">Details</button>
+        </div>
+      </article>
+
+      <p class="eyebrow">Stats</p>
+      <div class="stats">
+        <div class="stat"><b>12</b><span>sessions logged</span></div>
+        <div class="stat"><b>4</b><span>day streak</span></div>
+      </div>
+
+      <p class="eyebrow">Calendar</p>
+      <div class="cal-grid" style="margin-bottom:18px;">
+        <button class="cal-cell has"><span class="cal-num">16</span><span class="cal-dot missed"></span></button>
+        <button class="cal-cell has"><span class="cal-num">17</span><span class="cal-dot done"></span></button>
+        <button class="cal-cell has"><span class="cal-num">18</span><span class="cal-dot done"></span></button>
+        <button class="cal-cell has today"><span class="cal-num">19</span><span class="cal-dot done"></span></button>
+        <button class="cal-cell has"><span class="cal-num">20</span><span class="cal-dot future"></span></button>
+        <button class="cal-cell has"><span class="cal-num">21</span><span class="cal-dot future"></span></button>
+        <button class="cal-cell empty"></button>
+      </div>
+
+      <p class="eyebrow">Buttons</p>
+      <div class="sheet-actions">
+        <button class="btn-cancel">Cancel</button>
+        <button class="btn-save">Save</button>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

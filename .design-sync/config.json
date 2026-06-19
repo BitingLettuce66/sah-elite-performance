@@ -1,0 +1,13 @@
+{
+  "projectId": null,
+  "shape": "tokens-only",
+  "approach": "Lightweight hand-built brand + tokens sync (app is vanilla JS with no component library; see NOTES.md).",
+  "uploadDir": "ds-bundle",
+  "readmeHeader": ".design-sync/conventions.md",
+  "sources": {
+    "styles": "src/styles.css",
+    "tokens": ".design-sync/tokens.json",
+    "readme": ".design-sync/conventions.md",
+    "preview": ".design-sync/preview/overview.html"
+  }
+}
