@@ -45,13 +45,13 @@ html,body{margin:0;background:var(--bg);color:var(--text);
 #topbar{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;
   padding:max(14px,env(safe-area-inset-top)) 18px 12px;background:linear-gradient(#0B0B0C,rgba(11,11,12,.85));
   backdrop-filter:blur(8px);border-bottom:1px solid var(--line);}
-.brand{font-weight:700;letter-spacing:.14em;font-size:13px;color:var(--accent);}
+/* Centered wordmark, avatar left, phase right (Runna-inspired top bar). */
+.brand{position:absolute;left:50%;transform:translateX(-50%);
+  font-weight:700;letter-spacing:.14em;font-size:13px;color:var(--accent);white-space:nowrap;}
 .brand span{color:var(--muted);font-weight:500;letter-spacing:.08em;}
-.top-right{display:flex;align-items:center;gap:12px;}
-.phase{font-size:12px;color:var(--muted);letter-spacing:.04em;}
-#settings-btn{background:transparent;border:none;color:var(--muted);font-size:19px;line-height:1;
-  width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:9px;}
-#settings-btn:active{color:var(--accent);}
+.avatar{flex:none;width:34px;height:34px;border-radius:50%;border:none;background:var(--accent);
+  color:#0B0B0C;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;}
+.phase{flex:none;font-size:12px;color:var(--muted);letter-spacing:.04em;}
 
 /* Settings sheet — grouped sections */
 .set-group{padding:4px 0 16px;border-bottom:1px solid var(--line);margin-bottom:16px;}

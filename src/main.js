@@ -159,7 +159,7 @@ async function boot(){
   materializeDates();   // compute session.date from the active assignment
   initSync();           // no-op while disabled; cloud sync slots in here later
   document.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => { if(b.dataset.view==='history') state._scrollHistory=true; state.view=b.dataset.view; sync(); render(); });
-  const sb=$('#settings-btn'); if(sb) sb.onclick=openSettings;
+  const sb=$('#avatar-btn'); if(sb) sb.onclick=openSettings;
   sync(); render();
   if(!state.storageOk) showToast('Storage is unavailable — anything you log won’t be saved this session.', null, null, 6000);
   else await maybeOnboard();   // first-run welcome (no-op for returning users)
