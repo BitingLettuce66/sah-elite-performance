@@ -11,7 +11,7 @@ import { loadAllLogs, putLog, deleteLog, migrateFromLocalStorage, getSetting, pu
 import { drawProgressCharts, destroyCharts } from './charts.js';
 import { drawCard, saveCanvas, shareCanvas } from './share.js';
 import { SPRINT_DISTANCES, sprintResults, bestByDistance, loggedDistances, seriesForDistance } from './sprints.js';
-import { initSync, getStatus } from './sync.js';
+import { initSync, getStatus, fullSync, onStatusChange } from './sync.js';
 import { addDays, sortByDate, findToday as findTodaySession, computeStreak, statusOf } from './logic.js';
 import { TYPE, NIGGLE, todayISO, round, esc, slug, fmtDate, monthLabel, pill } from './format.js';
 import { buildBackup, validateBackup, normalizeImported } from './backup.js';
@@ -441,22 +441,49 @@ function openWelcome(){
   };
 }
 
-// Account section of Settings (Phase 1 auth). Empty when auth isn't configured.
-// Plain-English cloud-sync status for the Account section.
-function syncStatusText(){
-  const s = getStatus();
-  if(s.state==='syncing') return 'Syncing your training to the cloud…';
-  if(s.state==='error') return 'Your training is safe on this device; cloud sync hit a snag and will retry.';
-  if(s.state==='idle') return 'Your training is backed up and synced across your devices.' + (s.pending?` (${s.pending} change${s.pending===1?'':'s'} pending)`:'');
-  return 'Your training is on this device and will sync when you’re online.';
+// Relative "x ago" for the last-synced line.
+function timeAgo(iso){
+  if(!iso) return '';
+  const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime())/1000));
+  if(s < 60) return 'just now';
+  const m = Math.round(s/60); if(m < 60) return `${m} min ago`;
+  const h = Math.round(m/60); if(h < 24) return `${h} hr ago`;
+  const d = Math.round(h/24); return `${d} day${d===1?'':'s'} ago`;
 }
+// Cloud-sync status for the Account section → { cls, text }. Reflects offline,
+// syncing, error, and idle (with last-synced time + pending count).
+function syncStatusLine(){
+  const s = getStatus();
+  if(typeof navigator!=='undefined' && navigator.onLine===false)
+    return { cls:'sync-off', text:'Offline — changes will sync when you reconnect.' };
+  if(s.state==='syncing') return { cls:'sync-go', text:'Syncing…' };
+  if(s.state==='error') return { cls:'sync-err', text:'Sync issue — will retry. Tap “Sync now” to try again.' };
+  if(s.state==='idle'){
+    const when = s.lastSyncAt ? ` · ${timeAgo(s.lastSyncAt)}` : '';
+    const pend = s.pending ? ` · ${s.pending} pending` : '';
+    return { cls:'sync-ok', text:`Synced${when}${pend}` };
+  }
+  return { cls:'sync-off', text:'Your training will sync once you’re online.' };
+}
+// Refresh the status line + Sync-now button in place (driven by onStatusChange).
+function refreshSyncStatus(){
+  const el = $('#set-sync-status'); if(!el) return;
+  const st = syncStatusLine(); el.className = `sync-status ${st.cls}`; el.textContent = st.text;
+  const sn = $('#set-syncnow'); if(sn){ const busy = getStatus().state==='syncing'; sn.disabled = busy; sn.textContent = busy?'Syncing…':'Sync now'; }
+}
+// Account section of Settings (Phase 1 auth). Empty when auth isn't configured.
 function accountGroup(){
   if(!AUTH_ENABLED) return '';
   if(state.user){
+    const st = syncStatusLine();
     return `<section class="set-group">
       <h4>Account</h4>
-      <p class="set-note">Signed in as <b>${esc(state.user.email||'your account')}</b>. ${syncStatusText()}</p>
-      <button class="btn-cancel" id="set-signout">Sign out</button>
+      <p class="set-note">Signed in as <b>${esc(state.user.email||'your account')}</b>.</p>
+      <p class="sync-status ${st.cls}" id="set-sync-status">${st.text}</p>
+      <div class="backup-actions">
+        <button class="btn-cancel" id="set-syncnow">Sync now</button>
+        <button class="btn-cancel" id="set-signout">Sign out</button>
+      </div>
     </section>`;
   }
   return `<section class="set-group">
@@ -514,6 +541,13 @@ function openSettings(){
   if(im&&f){ im.onclick=()=>f.click(); f.onchange=()=>{ if(f.files[0]) importBackup(f.files[0]); f.value=''; }; }
   const si=$('#set-signin'); if(si) si.onclick=openSignIn;
   const so=$('#set-signout'); if(so) so.onclick=async ()=>{ await signOut(); state.user=null; openSettings(); render(); };
+  const sn=$('#set-syncnow');
+  if(sn) sn.onclick=async ()=>{ sn.disabled=true; sn.textContent='Syncing…'; try{ await fullSync(); }catch(e){} refreshSyncStatus(); };
+  // Live-update the status line while Settings is open; cleaned up on close.
+  if($('#set-sync-status')){
+    if(state._syncStatusOff) state._syncStatusOff();
+    state._syncStatusOff = onStatusChange(()=>refreshSyncStatus());
+  }
 }
 
 // Change the plan's start date — shifts the whole schedule (the assignment),
@@ -714,6 +748,7 @@ function openSheet(html){
 function closeSheet(){
   $('#modal').classList.add('hidden');
   if(_sheetKeys){ document.removeEventListener('keydown', _sheetKeys); _sheetKeys = null; }
+  if(state._syncStatusOff){ state._syncStatusOff(); state._syncStatusOff = null; }  // stop live sync-status updates
   if(_lastFocus && _lastFocus.focus){ try{ _lastFocus.focus(); }catch(e){} }
   _lastFocus = null;
 }
