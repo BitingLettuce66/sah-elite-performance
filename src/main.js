@@ -15,6 +15,7 @@ import { initSync } from './sync.js';
 import { addDays, sortByDate, findToday as findTodaySession, computeStreak, statusOf } from './logic.js';
 import { TYPE, NIGGLE, todayISO, round, esc, slug, fmtDate, monthLabel, pill } from './format.js';
 import { buildBackup, validateBackup, normalizeImported } from './backup.js';
+import { AUTH_ENABLED, sendMagicLink, getUser, signOut, onAuthChange } from './auth.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 
@@ -36,7 +37,7 @@ const updateSW = registerSW({
 // boot so render code can read them synchronously.
 const state = { data: null, view: 'today', logs: {}, share: { type: 'session', size: 'story' },
   sprintDist: null, targets: {}, assignment: null, bodyweight: [],
-  histView: 'calendar', histMonth: null };
+  histView: 'calendar', histMonth: null, user: null };
 const targetsKey = () => `targets:${ATHLETE_ID}`;
 // Presentation helpers (TYPE, NIGGLE, todayISO, round, esc, slug, fmtDate,
 // monthLabel, pill) live in format.js; addDays + status logic live in logic.js.
@@ -158,6 +159,10 @@ async function boot(){
   }
   materializeDates();   // compute session.date from the active assignment
   initSync();           // no-op while disabled; cloud sync slots in here later
+  if(AUTH_ENABLED){     // Phase 1: restore session + react to login/logout (sync stays off until Phase 2)
+    try { state.user = await getUser(); } catch(e){ state.user = null; }
+    onAuthChange(session => { state.user = session ? session.user : null; render(); });
+  }
   document.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => { if(b.dataset.view==='history') state._scrollHistory=true; state.view=b.dataset.view; sync(); render(); });
   const sb=$('#avatar-btn'); if(sb) sb.onclick=openSettings;
   sync(); render();
@@ -436,10 +441,49 @@ function openWelcome(){
   };
 }
 
-// Settings home — plan + data controls, reachable from the top-bar gear so they
-// don't clutter the Progress dashboard.
+// Account section of Settings (Phase 1 auth). Empty when auth isn't configured.
+function accountGroup(){
+  if(!AUTH_ENABLED) return '';
+  if(state.user){
+    return `<section class="set-group">
+      <h4>Account</h4>
+      <p class="set-note">Signed in as <b>${esc(state.user.email||'your account')}</b>. Your data still lives on this device — cloud sync turns on in the next step.</p>
+      <button class="btn-cancel" id="set-signout">Sign out</button>
+    </section>`;
+  }
+  return `<section class="set-group">
+    <h4>Account</h4>
+    <p class="set-note">Sign in to sync your training across devices and back it up. The app works fully offline either way — signing in only adds sync.</p>
+    <button class="btn-cancel" id="set-signin">Sign in to sync</button>
+  </section>`;
+}
+// Magic-link (passwordless) sign-in sheet.
+function openSignIn(){
+  openSheet(`<h3>Sign in</h3><p class="sheet-note">Enter your email and we'll send a one-tap sign-in link — no password.</p>
+    <div class="field"><label>Email</label><input id="auth-email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com"></div>
+    <div class="sheet-actions"><button class="btn-cancel" id="x-cancel">Cancel</button><button class="btn-save" id="x-send">Send link</button></div>`);
+  $('#x-cancel').onclick=closeSheet;
+  $('#x-send').onclick=async ()=>{
+    const email=$('#auth-email').value.trim(); if(!email) return;
+    const btn=$('#x-send'); btn.textContent='Sending…'; btn.disabled=true;
+    try {
+      await sendMagicLink(email);
+      openSheet(`<h3>Check your email</h3><p class="sheet-note">A sign-in link is on its way to <b>${esc(email)}</b>. Open it on this device to finish.</p>
+        <div class="sheet-actions"><button class="btn-save" id="x-ok">OK</button></div>`);
+      $('#x-ok').onclick=closeSheet;
+    } catch(e){
+      openSheet(`<h3>Couldn't send the link</h3><p class="sheet-note">${esc(e.message||'Something went wrong. Check the email and try again.')}</p>
+        <div class="sheet-actions"><button class="btn-save" id="x-ok">OK</button></div>`);
+      $('#x-ok').onclick=closeSheet;
+    }
+  };
+}
+
+// Settings home — account + plan + data controls, reachable from the top-bar
+// avatar so they don't clutter the Progress dashboard.
 function openSettings(){
   openSheet(`<h3>Settings</h3>
+    ${accountGroup()}
     <section class="set-group">
       <h4>Plan</h4>
       <p class="set-note">Programme starts <b>${state.assignment?fmtDate(state.assignment.startDate):'—'}</b> · ${state.data.sessions.length} sessions, scheduled relative to that date.</p>
@@ -460,6 +504,8 @@ function openSettings(){
   $('#set-export').onclick = exportBackup;
   const im=$('#set-import'), f=$('#set-file');
   if(im&&f){ im.onclick=()=>f.click(); f.onchange=()=>{ if(f.files[0]) importBackup(f.files[0]); f.value=''; }; }
+  const si=$('#set-signin'); if(si) si.onclick=openSignIn;
+  const so=$('#set-signout'); if(so) so.onclick=async ()=>{ await signOut(); state.user=null; openSettings(); render(); };
 }
 
 // Change the plan's start date — shifts the whole schedule (the assignment),
