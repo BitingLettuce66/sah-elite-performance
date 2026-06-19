@@ -22,7 +22,7 @@ The product north star. Any tool building this (Claude Code, Cowork, or otherwis
 4. **Injury-aware, safely.** Auto-regulation and red-flag stops are first-class (readiness + niggle gates). The AI gives **training guidance, not medical advice** — disclaimers and "see a professional" gates; never diagnose or treat.
 5. **Coach and athlete in one system.** Single athlete now; the multi-athlete coach layer is a data addition, not a rebuild.
 6. **Private by default.** Health data handled with care; secrets never shipped.
-7. **Calm and premium.** Quiet-Luxury: jet black + matte gold, minimalist.
+7. **Calm and premium.** Quiet-Luxury: jet black + cool light-blue accent + silver, minimalist.
 
 ## The moat
 AI-generated, injury-aware, **bespoke plans from a conversation** — for general athletes *and* their coaches. Not templates. Not race-only.

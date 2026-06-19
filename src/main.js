@@ -13,6 +13,8 @@ import { drawCard, saveCanvas, shareCanvas } from './share.js';
 import { SPRINT_DISTANCES, sprintResults, bestByDistance, loggedDistances, seriesForDistance } from './sprints.js';
 import { initSync } from './sync.js';
 import { addDays, sortByDate, findToday as findTodaySession, computeStreak, statusOf } from './logic.js';
+import { TYPE, NIGGLE, todayISO, round, esc, slug, fmtDate, monthLabel, pill } from './format.js';
+import { buildBackup, validateBackup, normalizeImported } from './backup.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 
@@ -33,21 +35,11 @@ const updateSW = registerSW({
 // state.logs is an in-memory cache of all logs, loaded once from IndexedDB on
 // boot so render code can read them synchronously.
 const state = { data: null, view: 'today', logs: {}, share: { type: 'session', size: 'story' },
-  sprintDist: null, targets: {}, assignment: null, bodyweight: [] };
+  sprintDist: null, targets: {}, assignment: null, bodyweight: [],
+  histView: 'calendar', histMonth: null };
 const targetsKey = () => `targets:${ATHLETE_ID}`;
-const slug = s => s.replace(/[^a-z0-9]+/gi, '-');
-
-const TYPE = {
-  HIGH:{label:'HIGH',cls:'t-high'}, DELOAD:{label:'DELOAD',cls:'t-deload'},
-  TAPER:{label:'TAPER',cls:'t-taper'}, LOW:{label:'LOW',cls:'t-low'},
-  RECOVERY:{label:'REST',cls:'t-rest'}, RACE:{label:'RACE',cls:'t-race'}
-};
-const NIGGLE = ['None','Monitor','Modify','Stop'];
-
-const todayISO = () => { const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
-// Round to kill floating-point artifacts (e.g. 3.7399999 → 3.74). null stays null.
-const round = (v, dp) => v==null ? null : Math.round(v * 10**dp) / 10**dp;
-// (addDays lives in logic.js)
+// Presentation helpers (TYPE, NIGGLE, todayISO, round, esc, slug, fmtDate,
+// monthLabel, pill) live in format.js; addDays + status logic live in logic.js.
 // Bind the relative template to the calendar: session.date = assignment start + offset.
 // Leaves any session that already has a date (legacy seed) untouched.
 function materializeDates(){
@@ -93,34 +85,24 @@ function quickDone(id){ const se=byId(id); setLog(id, { done:true, date: se?se.d
 function toggleDone(id){ const lg=getLog(id)||{}; const se=byId(id); setLog(id, { done:!lg.done, date: se?se.date:todayISO() }); render(); }
 
 // --- Backup: export/import logs as JSON (local data can be cleared by iOS) ---
+// Pure serialise/validate/normalise live in backup.js; here we wire them to
+// the file download, IndexedDB writes, and the in-memory cache.
 function exportBackup(){
-  const data = { app:'SAH Elite Performance', type:'sah-backup', version:1,
-    athleteId:ATHLETE_ID, planId:PLAN_ID,
-    exportedAt:new Date().toISOString(), logs:Object.values(state.logs) };
+  const data = buildBackup(Object.values(state.logs),
+    { athleteId:ATHLETE_ID, planId:PLAN_ID, exportedAt:new Date().toISOString() });
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
   const url = URL.createObjectURL(blob); const a = document.createElement('a');
   a.href = url; a.download = `sah-backup-${todayISO()}.json`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url), 1000);
 }
-// Validate a parsed backup: accept a {logs:[...]} object or a bare array;
-// keep only well-formed entries (object with a string sessionId).
-function validateBackup(data){
-  const raw = Array.isArray(data) ? data : (data && Array.isArray(data.logs) ? data.logs : null);
-  if(!raw) return { ok:false, error:"That file isn't a SAH backup — no logs found." };
-  const logs = raw.filter(l => l && typeof l==='object' && typeof l.sessionId==='string');
-  if(!logs.length) return { ok:false, error:'No valid log entries were found in that file.' };
-  return { ok:true, logs };
-}
 function applyBackup(logs){
-  let n=0;
-  for(const lg of logs){
-    const rec = { athleteId:ATHLETE_ID, planId:PLAN_ID, ...lg, sessionId:lg.sessionId };
+  const recs = normalizeImported(logs, { athleteId:ATHLETE_ID, planId:PLAN_ID });
+  for(const rec of recs){
     state.logs[rec.sessionId] = rec;
     putLog(rec).catch(e=>console.error('Import write failed', e));
-    n++;
   }
-  return n;
+  return recs.length;
 }
 function importNotice(title, body){
   openSheet(`<h3>${esc(title)}</h3><p class="sheet-note">${esc(body)}</p>
@@ -177,17 +159,16 @@ async function boot(){
   materializeDates();   // compute session.date from the active assignment
   initSync();           // no-op while disabled; cloud sync slots in here later
   document.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => { if(b.dataset.view==='history') state._scrollHistory=true; state.view=b.dataset.view; sync(); render(); });
+  const sb=$('#settings-btn'); if(sb) sb.onclick=openSettings;
   sync(); render();
   if(!state.storageOk) showToast('Storage is unavailable — anything you log won’t be saved this session.', null, null, 6000);
+  else await maybeOnboard();   // first-run welcome (no-op for returning users)
 }
 function sync(){ document.querySelectorAll('#tabbar button').forEach(b => { const on=b.dataset.view===state.view; b.classList.toggle('active', on); if(on) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); }); }
 
 const sorted = () => sortByDate(state.data.sessions);
 function findToday(){ return findTodaySession(state.data.sessions, todayISO()); }
 function byId(id){ return state.data.sessions.find(x=>x.id===id); }
-const pill = t => { const m=TYPE[t]||TYPE.LOW; return `<span class="pill ${m.cls}">${m.label}</span>`; };
-const esc = s => (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-function fmtDate(iso){ return new Date(iso+'T00:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'}); }
 
 function card(se){
   const lg = getLog(se.id)||{};
@@ -239,8 +220,20 @@ function statusDot(se, lg){
   const cls = statusOf(se, lg||{}, todayISO());
   return { cls, char: cls==='done' ? '✓' : '○' };
 }
-const monthLabel = iso => new Date(iso+'T00:00').toLocaleDateString('en-AU',{month:'long',year:'numeric'});
+// Calendar / List toggle (+ a "jump to today" link in list mode).
+function historyHead(active){
+  return `<div class="hist-head">
+    <div class="hist-toggle">
+      <button data-hview="calendar" class="${active==='calendar'?'sel':''}">Calendar</button>
+      <button data-hview="list" class="${active==='list'?'sel':''}">List</button>
+    </div>
+    ${active==='list'?`<button class="link-btn" id="hist-today">Today</button>`:''}
+  </div>`;
+}
 function viewHistory(){
+  return state.histView==='list' ? viewHistoryList() : viewHistoryCalendar();
+}
+function viewHistoryList(){
   const t = todayISO();
   let lastMonth = '';
   const rows = sorted().map(se => {
@@ -253,7 +246,46 @@ function viewHistory(){
       <button class="row-dot ${d.cls}" data-done="${se.id}" aria-label="toggle done">${d.char}</button>
     </div>`;
   }).join('');
-  return `<div class="hist-head"><p class="eyebrow">History</p><button class="link-btn" id="hist-today">Today</button></div><div class="list">${rows}</div>`;
+  return `${historyHead('list')}<div class="list">${rows}</div>`;
+}
+// The month currently shown in the calendar ('YYYY-MM'), defaulting to today's.
+const calMonth = () => state.histMonth || todayISO().slice(0,7);
+function shiftMonth(ym, delta){ const [y,m]=ym.split('-').map(Number); const d=new Date(y, m-1+delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+// Map each session to its (computed) date for O(1) calendar lookup.
+function sessionsByDate(){ const m={}; for(const s of state.data.sessions) m[s.date]=s; return m; }
+function viewHistoryCalendar(){
+  const ym = calMonth(); const [y,m] = ym.split('-').map(Number);
+  const t = todayISO();
+  const byDate = sessionsByDate();
+  const startWeekday = (new Date(y, m-1, 1).getDay()+6)%7;   // 0=Mon … 6=Sun
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const dow = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<span class="cal-dow">${d}</span>`).join('');
+  let cells = '';
+  for(let i=0;i<startWeekday;i++) cells += `<span class="cal-cell empty"></span>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const iso = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const se = byDate[iso];
+    const isToday = iso===t ? ' today' : '';
+    if(!se){ cells += `<span class="cal-cell${isToday}"><span class="cal-num">${d}</span></span>`; continue; }
+    const st = statusOf(se, getLog(se.id)||{}, t);   // done | missed | future
+    cells += `<button class="cal-cell has${isToday}" data-id="${se.id}" aria-label="${fmtDate(iso)} — ${esc(se.focus)}">
+      <span class="cal-num">${d}</span><span class="cal-dot ${st}"></span></button>`;
+  }
+  const label = new Date(y, m-1, 1).toLocaleDateString('en-AU',{month:'long',year:'numeric'});
+  return `${historyHead('calendar')}
+    <div class="cal-nav">
+      <button class="cal-arrow" id="cal-prev" aria-label="Previous month">‹</button>
+      <span class="cal-month">${label}</span>
+      <button class="cal-arrow" id="cal-next" aria-label="Next month">›</button>
+    </div>
+    <div class="cal-grid cal-head">${dow}</div>
+    <div class="cal-grid">${cells}</div>
+    <div class="cal-legend">
+      <span><i class="cal-dot done"></i>Done</span>
+      <span><i class="cal-dot missed"></i>Missed</span>
+      <span><i class="cal-dot future"></i>Upcoming</span>
+    </div>`;
 }
 function streak(){ return computeStreak(state.data.sessions, state.logs, todayISO()); }
 // Next deload / taper / race / test-gate on or after today.
@@ -290,21 +322,7 @@ function viewProgress(){
    ${sprintProgressCard()}
    ${chartCard('Readiness','/10','readiness')}
    ${bwCard()}
-   ${chartCard('Adherence','sessions','adh')}
-   <section class="backup">
-     <h3>Plan</h3>
-     <p>Programme starts <b>${state.assignment?fmtDate(state.assignment.startDate):'—'}</b> · ${state.data.sessions.length} sessions, scheduled relative to that date.</p>
-     <div class="backup-actions"><button class="btn-cancel" id="plan-start">Change start date</button></div>
-   </section>
-   <section class="backup">
-     <h3>Your data</h3>
-     <p>Logs live only on this device. Export a backup regularly — iOS can clear local storage if the app sits unused.</p>
-     <div class="backup-actions">
-       <button class="btn-cancel" id="bk-export">Export backup</button>
-       <button class="btn-cancel" id="bk-import">Import backup</button>
-     </div>
-     <input type="file" id="bk-file" accept="application/json,.json" hidden>
-   </section>`;
+   ${chartCard('Adherence','sessions','adh')}`;
 }
 // Sprint PBs — fastest time per distance, with optional target.
 function sprintPBsCard(){
@@ -366,6 +384,64 @@ function sprintRowHTML(r={}){
     <input class="sr-time" type="number" step="0.01" inputmode="decimal" placeholder="sec" value="${r.time??''}">
     <button type="button" class="sr-del" aria-label="Remove">×</button>
   </div>`;
+}
+
+// First run: greet a brand-new user once and let them confirm the start date.
+// Skipped for anyone who already has logs (e.g. restored a backup) and never
+// shown again once dismissed. Needs storage to remember the flag.
+const ONBOARDED_KEY = () => 'onboarded:'+ATHLETE_ID;
+async function maybeOnboard(){
+  if(!state.storageOk) return;
+  let seen;
+  try { seen = await getSetting(ONBOARDED_KEY()); } catch(e){ return; }
+  if(seen) return;
+  if(Object.keys(state.logs).length){            // existing data — mark seen silently
+    try { await putSetting(ONBOARDED_KEY(), true); } catch(e){}
+    return;
+  }
+  openWelcome();
+}
+function openWelcome(){
+  const cur = state.assignment ? state.assignment.startDate : state.data.startDate;
+  openSheet(`<h3>Welcome 👋</h3>
+    <p class="sheet-note">This is your training log — pre-loaded with your full programme. It works completely offline, and everything stays on this device.</p>
+    <p class="sheet-note">Your programme starts on the date below. Change it if you'd like a different start day — you can always adjust it later in Settings.</p>
+    <div class="field"><label>Start date</label><input id="ob-start" type="date" value="${cur}"></div>
+    <div class="sheet-actions"><button class="btn-save" id="ob-go">Start training</button></div>`);
+  $('#ob-go').onclick = async () => {
+    const v = $('#ob-start').value;
+    if(v && v!==cur){ state.assignment = { ...state.assignment, startDate:v };
+      try{ await putSetting('assignment:'+ATHLETE_ID, state.assignment); }catch(e){ console.error('Saving start failed', e); }
+      materializeDates(); }
+    try{ await putSetting(ONBOARDED_KEY(), true); }catch(e){}
+    closeSheet(); render();
+  };
+}
+
+// Settings home — plan + data controls, reachable from the top-bar gear so they
+// don't clutter the Progress dashboard.
+function openSettings(){
+  openSheet(`<h3>Settings</h3>
+    <section class="set-group">
+      <h4>Plan</h4>
+      <p class="set-note">Programme starts <b>${state.assignment?fmtDate(state.assignment.startDate):'—'}</b> · ${state.data.sessions.length} sessions, scheduled relative to that date.</p>
+      <button class="btn-cancel" id="set-plan-start">Change start date</button>
+    </section>
+    <section class="set-group">
+      <h4>Your data</h4>
+      <p class="set-note">Logs live only on this device. Export a backup regularly — iOS can clear local storage if the app sits unused.</p>
+      <div class="backup-actions">
+        <button class="btn-cancel" id="set-export">Export backup</button>
+        <button class="btn-cancel" id="set-import">Import backup</button>
+      </div>
+      <input type="file" id="set-file" accept="application/json,.json" hidden>
+    </section>
+    <div class="sheet-actions"><button class="btn-save" id="x-done">Done</button></div>`);
+  $('#x-done').onclick = closeSheet;
+  $('#set-plan-start').onclick = openPlanStart;
+  $('#set-export').onclick = exportBackup;
+  const im=$('#set-import'), f=$('#set-file');
+  if(im&&f){ im.onclick=()=>f.click(); f.onchange=()=>{ if(f.files[0]) importBackup(f.files[0]); f.value=''; }; }
 }
 
 // Change the plan's start date — shifts the whole schedule (the assignment),
@@ -459,9 +535,17 @@ function render(){
   $('#view').querySelectorAll('.row-dot').forEach(b=>b.onclick=()=>toggleDone(b.dataset.done));
   $('#view').querySelectorAll('.wk-cell, .nextup').forEach(b=>b.onclick=()=>openDetail(b.dataset.id));
   if(v==='history'){
-    const scrollToToday=()=>{ const r=$('#view .row.is-today'); if(r) r.scrollIntoView({block:'center'}); };
-    const tbtn=$('#hist-today'); if(tbtn) tbtn.onclick=scrollToToday;
-    if(state._scrollHistory){ state._scrollHistory=false; requestAnimationFrame(scrollToToday); }
+    $('#view').querySelectorAll('.hist-toggle button[data-hview]').forEach(b=>b.onclick=()=>{
+      state.histView=b.dataset.hview; if(b.dataset.hview==='list') state._scrollHistory=true; render(); });
+    if(state.histView==='calendar'){
+      const prev=$('#cal-prev'); if(prev) prev.onclick=()=>{ state.histMonth=shiftMonth(calMonth(),-1); render(); };
+      const next=$('#cal-next'); if(next) next.onclick=()=>{ state.histMonth=shiftMonth(calMonth(),+1); render(); };
+      $('#view').querySelectorAll('.cal-cell.has').forEach(c=>c.onclick=()=>openDetail(c.dataset.id));
+    } else {
+      const scrollToToday=()=>{ const r=$('#view .row.is-today'); if(r) r.scrollIntoView({block:'center'}); };
+      const tbtn=$('#hist-today'); if(tbtn) tbtn.onclick=scrollToToday;
+      if(state._scrollHistory){ state._scrollHistory=false; requestAnimationFrame(scrollToToday); }
+    }
   }
   if(v==='progress'){
     drawProgressCharts(state.data.sessions, state.logs,
@@ -469,10 +553,6 @@ function render(){
     $('#view').querySelectorAll('.chip[data-dist]').forEach(c=>c.onclick=()=>{ state.sprintDist=c.dataset.dist; render(); });
     const tg=$('#pb-targets'); if(tg) tg.onclick=openTargets;
     const bwl=$('#bw-log'); if(bwl) bwl.onclick=openBodyweight;
-    const ps=$('#plan-start'); if(ps) ps.onclick=openPlanStart;
-    const ex=$('#bk-export'); if(ex) ex.onclick=exportBackup;
-    const im=$('#bk-import'), f=$('#bk-file');
-    if(im&&f){ im.onclick=()=>f.click(); f.onchange=()=>{ if(f.files[0]) importBackup(f.files[0]); f.value=''; }; }
   }
   if(v==='share'){
     const cv=$('#share-canvas');
@@ -535,8 +615,36 @@ function openLog(id){
       delLog(id); closeSheet(); render(); }; }
 }
 
-function openSheet(html){ $('#sheet').innerHTML=html; $('#modal').classList.remove('hidden'); }
-function closeSheet(){ $('#modal').classList.add('hidden'); }
+// --- Modal/sheet: focus management + keyboard (Escape to close, Tab trapped) ---
+let _lastFocus = null;   // element to restore focus to when the sheet closes
+let _sheetKeys = null;   // active keydown handler while a sheet is open
+// Visible, enabled, focusable elements inside a container, in DOM order.
+function focusablesIn(el){
+  return [...el.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])')]
+    .filter(n => !n.disabled && n.offsetParent !== null);
+}
+function openSheet(html){
+  _lastFocus = document.activeElement;       // remember what to return focus to
+  const sheet = $('#sheet'); sheet.innerHTML = html;
+  $('#modal').classList.remove('hidden');
+  const items = focusablesIn(sheet);
+  (items[0] || sheet).focus();               // move focus into the dialog
+  _sheetKeys = e => {
+    if(e.key === 'Escape'){ e.preventDefault(); closeSheet(); return; }
+    if(e.key !== 'Tab') return;
+    const f = focusablesIn(sheet); if(!f.length) return;
+    const first = f[0], last = f[f.length-1];
+    if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+  };
+  document.addEventListener('keydown', _sheetKeys);
+}
+function closeSheet(){
+  $('#modal').classList.add('hidden');
+  if(_sheetKeys){ document.removeEventListener('keydown', _sheetKeys); _sheetKeys = null; }
+  if(_lastFocus && _lastFocus.focus){ try{ _lastFocus.focus(); }catch(e){} }
+  _lastFocus = null;
+}
 $('#modal').addEventListener('click',e=>{ if(e.target.id==='modal') closeSheet(); });
 
 boot();
