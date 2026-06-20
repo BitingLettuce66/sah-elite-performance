@@ -97,6 +97,7 @@ export async function putSetting(key, value) {
 export async function addToOutbox(mut) { return (await db()).add(OUTBOX, mut); }
 export async function allOutbox() { return (await db()).getAll(OUTBOX); }
 export async function removeFromOutbox(id) { return (await db()).delete(OUTBOX, id); }
+export async function updateOutbox(mut) { return (await db()).put(OUTBOX, mut); }  // in-place (attempt counter / dead flag)
 export async function clearOutbox() { return (await db()).clear(OUTBOX); }
 
 // --- Quiet writers + raw reads for sync.js (apply pulled rows WITHOUT
