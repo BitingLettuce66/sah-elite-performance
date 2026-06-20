@@ -127,10 +127,12 @@ details p{font-size:13.5px;color:var(--text);line-height:1.55;margin:8px 2px 4px
 .cal-cell.today{border-color:var(--accent);background:rgba(127,178,217,.08);}
 .cal-num{font-size:13px;line-height:1;}
 .cal-cell.today .cal-num{color:var(--accent);font-weight:700;}
-.cal-dot{width:7px;height:7px;border-radius:50%;background:var(--line);}
+/* Status conveyed by SHAPE as well as colour (a11y: not colour alone):
+   done = filled, missed = hollow ring, upcoming = small dot. */
+.cal-dot{width:8px;height:8px;border-radius:50%;background:var(--line);box-sizing:border-box;}
 .cal-dot.done{background:var(--green);}
-.cal-dot.missed{background:var(--muted);}
-.cal-dot.future{background:var(--accent-dim);}
+.cal-dot.missed{background:transparent;border:1.5px solid var(--muted);}
+.cal-dot.future{background:var(--accent-dim);transform:scale(.55);}
 .cal-legend{display:flex;justify-content:center;gap:18px;margin-top:18px;font-size:11.5px;color:var(--muted);}
 .cal-legend span{display:flex;align-items:center;gap:6px;}
 .month-head{position:sticky;top:var(--topbar-h,48px);z-index:4;background:var(--bg);
