@@ -48,8 +48,13 @@ function db() {
   return _dbp;
 }
 
-// Read one athlete's (non-deleted) logs into a { [sessionId]: log } map.
-// Legacy logs without an athleteId are treated as the default athlete.
+/**
+ * Read one athlete's (non-deleted) logs into a `{ [sessionId]: log }` map for the
+ * in-memory cache. Tombstones are hidden; legacy logs without an athleteId are
+ * treated as the default athlete.
+ * @param {string} [athleteId='self']
+ * @returns {Promise<Object<string, Object>>}
+ */
 export async function loadAllLogs(athleteId = ATHLETE_ID) {
   const all = await (await db()).getAll(LOGS);
   const map = {};
@@ -60,15 +65,24 @@ export async function loadAllLogs(athleteId = ATHLETE_ID) {
   return map;
 }
 
-// Insert/update one log (must carry a `sessionId`). Stamps updatedAt + queues.
+/**
+ * Insert/update one log (must carry a `sessionId`). Stamps `updatedAt` + clears
+ * `deleted`, then enqueues an outbox mutation when sync is active.
+ * @param {Object} log  Must include `sessionId`.
+ * @returns {Promise<IDBValidKey>}
+ */
 export async function putLog(log) {
   const stamped = { ...log, updatedAt: nowISO(), deleted: false };
   const r = await (await db()).put(LOGS, stamped);
   if (syncOn()) await addToOutbox({ table: 'logs', op: 'upsert', key: stamped.sessionId, payload: stamped, updatedAt: stamped.updatedAt });
   return r;
 }
-// Remove one log. With sync on, write a tombstone (so the delete propagates to
-// other devices); with sync off, hard-delete as in v1.
+/**
+ * Remove one log. With sync on, write a tombstone (`deleted:true`) so the delete
+ * propagates to other devices; with sync off, hard-delete as in v1.
+ * @param {string} sessionId
+ * @returns {Promise<*>}
+ */
 export async function deleteLog(sessionId) {
   const conn = await db();
   if (syncOn()) {
@@ -81,11 +95,22 @@ export async function deleteLog(sessionId) {
   return conn.delete(LOGS, sessionId);
 }
 
-// Key/value settings (athlete-scoped keys, e.g. `targets:self`).
+/**
+ * Read a settings value by athlete-scoped key (e.g. `targets:self`).
+ * @param {string} key
+ * @returns {Promise<*|null>} The stored value, or null if missing/tombstoned.
+ */
 export async function getSetting(key) {
   const r = await (await db()).get(SETTINGS, key);
   return r && !r.deleted ? r.value : null;
 }
+/**
+ * Write a settings value. Stamps `updatedAt`; enqueues for sync when active and
+ * the key is syncable (training data, not device-local prefs).
+ * @param {string} key
+ * @param {*} value
+ * @returns {Promise<IDBValidKey>}
+ */
 export async function putSetting(key, value) {
   const rec = { key, value, updatedAt: nowISO(), deleted: false };
   const r = await (await db()).put(SETTINGS, rec);

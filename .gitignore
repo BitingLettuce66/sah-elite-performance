@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dev-dist/
+ds-bundle/
 .DS_Store
 *.log
 
