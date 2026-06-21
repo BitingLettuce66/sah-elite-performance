@@ -22,11 +22,17 @@ const $ = (s, el = document) => el.querySelector(s);
 // Lightweight toast (used for the PWA update prompt + offline-ready notice).
 function showToast(msg, actionLabel, onAction, autoHide){
   let el = $('#toast');
-  if(!el){ el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el); }
-  el.innerHTML = `<span>${msg}</span>` + (actionLabel ? `<button id="toast-act">${actionLabel}</button>` : '');
+  if(!el){ el = document.createElement('div'); el.id = 'toast'; el.setAttribute('role','status'); el.setAttribute('aria-live','polite'); document.body.appendChild(el); }
+  el.innerHTML = `<span>${esc(msg)}</span>` + (actionLabel ? `<button id="toast-act">${esc(actionLabel)}</button>` : '');
   el.classList.add('show');
   if(actionLabel && onAction) $('#toast-act').onclick = onAction;
   if(autoHide) setTimeout(()=>el.classList.remove('show'), autoHide);
+}
+// Announce a transient confirmation to screen readers via the polite live region
+// (visual users get the existing UI feedback). Clearing first re-announces repeats.
+function announce(msg){
+  const el = $('#sr-status'); if(!el) return;
+  el.textContent = ''; requestAnimationFrame(() => { el.textContent = msg; });
 }
 // Prompt to refresh when a new version is deployed (instead of a silent reload).
 const updateSW = registerSW({
@@ -81,9 +87,9 @@ function delLog(id){
   deleteLog(id).catch(e => console.error('Log delete failed', e));
 }
 // One-tap completion: mark done without opening the full sheet.
-function quickDone(id){ const se=byId(id); setLog(id, { done:true, date: se?se.date:todayISO() }); render(); }
+function quickDone(id){ const se=byId(id); setLog(id, { done:true, date: se?se.date:todayISO() }); announce('Session marked done'); render(); }
 // Toggle a session's done state from a History row (keeps other log fields).
-function toggleDone(id){ const lg=getLog(id)||{}; const se=byId(id); setLog(id, { done:!lg.done, date: se?se.date:todayISO() }); render(); }
+function toggleDone(id){ const lg=getLog(id)||{}; const se=byId(id); const nowDone=!lg.done; setLog(id, { done:nowDone, date: se?se.date:todayISO() }); announce(nowDone?'Session marked done':'Session marked not done'); render(); }
 
 // --- Backup: export/import logs as JSON (local data can be cleared by iOS) ---
 // Pure serialise/validate/normalise live in backup.js; here we wire them to
@@ -248,7 +254,7 @@ function viewHistoryList(){
     const isToday = se.date===t ? ' is-today' : '';
     return `${head}<div class="row${isToday}">
       <button class="row-main" data-id="${se.id}"><span class="row-date">${fmtDate(se.date)}</span>${pill(sv.type)}<span class="row-focus">${esc(sv.focus)}</span></button>
-      <button class="row-dot ${d.cls}" data-done="${se.id}" aria-label="toggle done">${d.char}</button>
+      <button class="row-dot ${d.cls}" data-done="${se.id}" aria-label="${esc(sv.focus)}, ${fmtDate(se.date)} — ${d.cls==='done'?'done':'not done'}; toggle">${d.char}</button>
     </div>`;
   }).join('');
   return `${historyHead('list')}<div class="list">${rows}</div>`;
@@ -647,8 +653,8 @@ function render(){
     $('#view').querySelectorAll('.hist-toggle button[data-hview]').forEach(b=>b.onclick=()=>{
       state.histView=b.dataset.hview; if(b.dataset.hview==='list') state._scrollHistory=true; render(); });
     if(state.histView==='calendar'){
-      const prev=$('#cal-prev'); if(prev) prev.onclick=()=>{ state.histMonth=shiftMonth(calMonth(),-1); render(); };
-      const next=$('#cal-next'); if(next) next.onclick=()=>{ state.histMonth=shiftMonth(calMonth(),+1); render(); };
+      const prev=$('#cal-prev'); if(prev) prev.onclick=()=>{ state.histMonth=shiftMonth(calMonth(),-1); announce(monthLabel(calMonth()+'-01')); render(); };
+      const next=$('#cal-next'); if(next) next.onclick=()=>{ state.histMonth=shiftMonth(calMonth(),+1); announce(monthLabel(calMonth()+'-01')); render(); };
       $('#view').querySelectorAll('.cal-cell.has').forEach(c=>c.onclick=()=>openDetail(c.dataset.id));
     } else {
       const scrollToToday=()=>{ const r=$('#view .row.is-today'); if(r) r.scrollIntoView({block:'center'}); };
@@ -679,13 +685,13 @@ function openDetail(id){ openSheet(card(sessionView(byId(id))));
 
 function openLog(id){
   const se=byId(id); const existing=getLog(id); const lg=existing||{done:false,rpe:null,sleep:null,readiness:null,niggle:'None',note:''};
-  const seg=(name,val,max)=>`<div class="seg" data-seg="${name}">`+Array.from({length:max},(_,i)=>i+1).map(n=>`<button data-v="${n}" class="${val==n?'sel':''}">${n}</button>`).join('')+`</div>`;
+  const seg=(name,val,max,label)=>`<div class="seg" data-seg="${name}" role="group" aria-label="${esc(label||name)}">`+Array.from({length:max},(_,i)=>i+1).map(n=>`<button data-v="${n}" class="${val==n?'sel':''}" aria-pressed="${val==n?'true':'false'}">${n}</button>`).join('')+`</div>`;
   openSheet(`<h3>${esc(se.focus)} · ${se.day}</h3>
-    <div class="field"><label>Done?</label><div class="seg" data-seg="done"><button data-v="1" class="${lg.done?'sel':''}">Yes</button><button data-v="0" class="${!lg.done?'sel':''}">No</button></div></div>
-    <div class="field"><label>RPE (1–10)</label>${seg('rpe',lg.rpe,10)}</div>
+    <div class="field"><label>Done?</label><div class="seg" data-seg="done" role="group" aria-label="Done?"><button data-v="1" class="${lg.done?'sel':''}" aria-pressed="${lg.done?'true':'false'}">Yes</button><button data-v="0" class="${!lg.done?'sel':''}" aria-pressed="${!lg.done?'true':'false'}">No</button></div></div>
+    <div class="field"><label>RPE (1–10)</label>${seg('rpe',lg.rpe,10,'RPE, 1 to 10')}</div>
     <details class="log-more"${(lg.sleep||lg.readiness||(lg.niggle&&lg.niggle!=='None'))?' open':''}><summary>Readiness &amp; wellness</summary>
-      <div class="field"><label>Sleep /10</label>${seg('sleep',lg.sleep,10)}</div>
-      <div class="field"><label>Readiness /10</label>${seg('readiness',lg.readiness,10)}</div>
+      <div class="field"><label>Sleep /10</label>${seg('sleep',lg.sleep,10,'Sleep, out of 10')}</div>
+      <div class="field"><label>Readiness /10</label>${seg('readiness',lg.readiness,10,'Readiness, out of 10')}</div>
       <div class="field"><label>Niggle</label><select id="f-niggle">${NIGGLE.map(o=>`<option ${lg.niggle===o?'selected':''}>${o}</option>`).join('')}</select></div>
     </details>
     <div class="field"><label>Gym loads — optional (feeds Progress charts)</label>
@@ -702,7 +708,7 @@ function openLog(id){
   const sheet=$('#sheet'); const picks={done:lg.done?1:0,rpe:lg.rpe,sleep:lg.sleep,readiness:lg.readiness};
   sheet.querySelectorAll('.seg').forEach(seg=>{ const key=seg.dataset.seg;
     seg.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{ picks[key]=Number(btn.dataset.v);
-      seg.querySelectorAll('button').forEach(x=>x.classList.remove('sel')); btn.classList.add('sel'); }); });
+      seg.querySelectorAll('button').forEach(x=>{ const on=x===btn; x.classList.toggle('sel',on); x.setAttribute('aria-pressed',on?'true':'false'); }); }); });
   $('#x-cancel').onclick=closeSheet;
   // Sprint-time rows: prefill from the log (or one blank row), add/remove dynamically.
   const rowsEl = $('#sprint-rows');
@@ -720,10 +726,10 @@ function openLog(id){
   $('#x-save').onclick=()=>{ setLog(id,{done:picks.done===1,rpe:picks.rpe,sleep:picks.sleep,readiness:picks.readiness,
       niggle:$('#f-niggle').value,
       squatKg:num('#f-squat'),hipThrustKg:num('#f-hip'),sprints:collectSprints(),
-      note:$('#f-note').value,date:se.date}); closeSheet(); render(); };
+      note:$('#f-note').value,date:se.date}); announce('Log saved'); closeSheet(); render(); };
   if(existing){ const del=$('#x-delete'); let armed=false;
     del.onclick=()=>{ if(!armed){ armed=true; del.textContent='Tap again to delete'; del.classList.add('armed'); return; }
-      delLog(id); closeSheet(); render(); }; }
+      delLog(id); announce('Log deleted'); closeSheet(); render(); }; }
 }
 
 // --- Modal/sheet: focus management + keyboard (Escape to close, Tab trapped) ---
