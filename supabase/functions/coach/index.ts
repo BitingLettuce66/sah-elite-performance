@@ -18,6 +18,7 @@
 import { buildCoachSystemPrompt, buildCoachUserPrompt } from '../../../src/coach.js';
 import { KNOWN_TYPES, DAYS } from '../../../src/plan-schema.js';
 import { handleCoach } from './handler.js';
+import { readAnthropicSSE, decodeStream } from './sse.js';
 
 const MODEL = 'claude-opus-4-8';
 const CORS = {
@@ -64,8 +65,11 @@ const PLAN_SCHEMA = {
   },
 };
 
-// One Claude call → a flat plan. Throws on HTTP error / refusal / unparseable
-// output so the handler's loop records a generation failure (→ 502).
+// One Claude call → a flat plan. STREAMS the response: a long plan (up to the
+// 16-week × 6-day cap) can run well past a non-streaming output ceiling, so we
+// raise max_tokens and stream to avoid truncation + HTTP timeouts. Throws on HTTP
+// error / refusal / truncation / unparseable output so the handler's loop records
+// a generation failure.
 function makeCallClaude(apiKey: string) {
   return async (intake: Record<string, unknown>, priorIssues: string) => {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -73,7 +77,8 @@ function makeCallClaude(apiKey: string) {
       headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 16000,
+        max_tokens: 64000,            // headroom for long plans; streaming makes this safe
+        stream: true,
         thinking: { type: 'adaptive' },
         output_config: { effort: 'medium', format: { type: 'json_schema', schema: PLAN_SCHEMA } },
         system: buildCoachSystemPrompt(),
@@ -81,9 +86,13 @@ function makeCallClaude(apiKey: string) {
       }),
     });
     if (!resp.ok) throw new Error(`Anthropic error ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
-    const data = await resp.json();
-    if (data.stop_reason === 'refusal') throw new Error('The coach declined this request.');
-    const text = (data.content || []).filter((b: { type: string }) => b.type === 'text').map((b: { text: string }) => b.text).join('');
+    if (!resp.body) throw new Error('Anthropic returned an empty stream.');
+    const { text, stopReason, error } = await readAnthropicSSE(decodeStream(resp.body));
+    if (error) throw new Error(`Anthropic stream error: ${error}`);
+    if (stopReason === 'refusal') throw new Error('The coach declined this request.');
+    if (stopReason === 'max_tokens') {
+      throw new Error('The plan was too long to finish — try fewer weeks or sessions per week.');
+    }
     return JSON.parse(text);   // throws on unparseable → recorded as a generation failure
   };
 }
