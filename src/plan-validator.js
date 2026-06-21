@@ -262,6 +262,28 @@ export function toEngineData(plan) {
   return { ...(template || {}), sessions: Array.isArray(sessions) ? sessions : [] };
 }
 
+/* Inverse of toEngineData: reshape a FLAT plan (seed.json / state.data style,
+   header fields at the root) into the { template, sessions } contract that
+   validatePlan expects. Header fields not on the allow-list are carried into
+   template and then dropped by validatePlan's normalization. */
+export function fromEngineData(flat) {
+  if (!flat || typeof flat !== 'object' || Array.isArray(flat)) return { template: {}, sessions: [] };
+  const { sessions, ...header } = flat;
+  return { template: header, sessions: Array.isArray(sessions) ? sessions : [] };
+}
+
+/* The single validated door for plan data entering the app. Composes
+   fromEngineData → validatePlan → toEngineData: takes a FLAT plan (however it
+   arrived — bundled seed, JSON import, future AI output) and returns engine-ready
+   FLAT data on success, or the structured errors on rejection. Pure (no IO) so the
+   caller owns fetch/file/storage. */
+export function loadPlan(raw, opts) {
+  const res = validatePlan(fromEngineData(raw), opts);
+  return res.ok
+    ? { ok: true, data: toEngineData(res.plan), warnings: res.warnings, errors: [] }
+    : { ok: false, data: null, warnings: res.warnings, errors: res.errors };
+}
+
 /* Format issues as a compact string to feed back to the model on a retry. */
 export function formatIssues(result) {
   const line = (kind, x) => `${kind} ${x.code}${x.path ? ` @ ${x.path}` : ''}: ${x.message}`;

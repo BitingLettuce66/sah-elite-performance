@@ -15,6 +15,7 @@ import { initSync, getStatus, fullSync, onStatusChange } from './sync.js';
 import { addDays, sortByDate, findToday as findTodaySession, computeStreak, statusOf } from './logic.js';
 import { TYPE, NIGGLE, todayISO, round, esc, slug, fmtDate, monthLabel, pill } from './format.js';
 import { buildBackup, validateBackup, normalizeImported } from './backup.js';
+import { loadPlan } from './plan-validator.js';
 import { AUTH_ENABLED, sendMagicLink, getUser, signOut, onAuthChange } from './auth.js';
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -129,12 +130,75 @@ async function importBackup(file){
   } else finish();
 }
 
+// --- Plan loading: every plan (bundled seed or imported file) enters through the
+//     validator. loadPlan() (plan-validator.js) is pure; here we add the IO. ---
+const planKey = () => 'plan:' + ATHLETE_ID;
+// Reserve multi-tenant identity on a plan; default if absent (App-Spec §10.6).
+function withPlanIdentity(data){
+  data.athleteId = data.athleteId || ATHLETE_ID;
+  data.planId = data.planId || PLAN_ID;
+  return data;
+}
+// Validate a flat plan at the load boundary. On success use the normalized,
+// engine-ready data; if the bundled seed itself ever fails validation, fall back
+// to the raw seed so the app still renders (and shout in the console).
+function validatedPlanOrRaw(raw, label){
+  const r = loadPlan(raw);
+  if(r.ok){ if(r.warnings.length) console.info(`Plan "${label}" loaded with ${r.warnings.length} warning(s).`, r.warnings); return r.data; }
+  console.error(`Plan "${label}" failed validation — loading it unvalidated so the app still works.`, r.errors);
+  return raw;
+}
+// Import a plan JSON: reject (with reasons) anything that fails the validator,
+// otherwise confirm, persist, and swap it in. Logged history is kept (keyed by
+// session id); the start date / assignment is left as-is.
+async function importPlan(file){
+  let raw;
+  try { raw = JSON.parse(await file.text()); }
+  catch(e){ return importNotice('Import failed', "That file isn't valid JSON."); }
+  const r = loadPlan(raw);
+  if(!r.ok){
+    const items = r.errors.slice(0,8).map(e=>`<li>${esc(e.message)}</li>`).join('');
+    const more = r.errors.length>8 ? `<p class="sheet-note">…and ${r.errors.length-8} more.</p>` : '';
+    openSheet(`<h3>Plan rejected</h3>
+      <p class="sheet-note">This plan didn’t pass the safety checks, so it was not loaded:</p>
+      <ul class="sheet-errs">${items}</ul>${more}
+      <div class="sheet-actions"><button class="btn-save" id="x-ok">OK</button></div>`);
+    $('#x-ok').onclick = closeSheet;
+    return;
+  }
+  const data = withPlanIdentity(r.data);
+  const warnMsg = r.warnings.length ? ` (${r.warnings.length} warning${r.warnings.length===1?'':'s'})` : '';
+  // Anchor the new programme to a chosen start date — default to the plan's own
+  // startDate (validated already) or today. Without this, sessions are scheduled
+  // off the OLD assignment date and a fresh plan can land entirely in the past.
+  const startDefault = data.startDate || todayISO();
+  const finish = async () => {
+    const startVal = $('#imp-start').value || startDefault;
+    closeSheet();
+    state.data = data;
+    state.assignment = { athleteId:ATHLETE_ID, planId:data.planId, templateId:data.templateId||'default',
+      startDate:startVal, planVersion:data.planVersion||1, status:'active' };
+    try {
+      await putSetting(planKey(), data);
+      await putSetting('assignment:'+ATHLETE_ID, state.assignment);
+    } catch(e){ console.error('Saving imported plan failed', e); }
+    materializeDates(); render();
+    importNotice('Plan imported', `Loaded ${data.sessions.length} session${data.sessions.length===1?'':'s'}${warnMsg}. Starts ${fmtDate(startVal)}.`);
+  };
+  openSheet(`<h3>Import plan?</h3>
+    <p class="sheet-note">This replaces your current programme with <b>${esc(data.name||'an imported plan')}</b> — ${data.sessions.length} session${data.sessions.length===1?'':'s'}. Your logged history is kept (matched by session id).</p>
+    <div class="field"><label for="imp-start">Start date</label><input id="imp-start" type="date" value="${startDefault}"></div>
+    <div class="sheet-actions"><button class="btn-cancel" id="x-cancel">Cancel</button><button class="btn-save" id="x-go">Import</button></div>`);
+  $('#x-cancel').onclick = closeSheet;
+  $('#x-go').onclick = finish;
+}
+
 async function boot(){
-  try { const r = await fetch('./data/seed.json'); state.data = await r.json(); }
+  let raw;
+  try { const r = await fetch('./data/seed.json'); raw = await r.json(); }
   catch(e){ $('#view').innerHTML = '<div class="empty">Could not load programme data.</div>'; return; }
-  // Reserve multi-tenant identity on the plan; default if absent (App-Spec §10.6).
-  state.data.athleteId = state.data.athleteId || ATHLETE_ID;
-  state.data.planId = state.data.planId || PLAN_ID;
+  // The bundled seed enters through the same validator gate as any other plan.
+  state.data = withPlanIdentity(validatedPlanOrRaw(raw, 'seed'));
   // The template is date-agnostic; an assignment binds it to a start date.
   const defaultAssignment = { athleteId:ATHLETE_ID, planId:state.data.planId,
     templateId:state.data.templateId||'default', startDate:state.data.startDate,
@@ -149,6 +213,14 @@ async function boot(){
     state.logs = await loadAllLogs(state.data.athleteId);
     state.targets = (await getSetting(targetsKey())) || {};
     state.bodyweight = (await getSetting('bw:'+ATHLETE_ID)) || [];
+    // Prefer a previously-imported plan, re-validated on load; keep the seed if it
+    // is absent or (defensively) no longer passes.
+    const storedPlan = await getSetting(planKey());
+    if(storedPlan){
+      const rp = loadPlan(storedPlan);
+      if(rp.ok) state.data = withPlanIdentity(rp.data);
+      else console.warn('Stored plan failed validation; keeping the bundled seed.', rp.errors);
+    }
     let asg = await getSetting('assignment:'+ATHLETE_ID);
     if(!asg){ asg = defaultAssignment; await putSetting('assignment:'+ATHLETE_ID, asg); }
     state.assignment = asg;
@@ -523,7 +595,11 @@ function openSettings(){
     <section class="set-group">
       <h4>Plan</h4>
       <p class="set-note">Programme starts <b>${state.assignment?fmtDate(state.assignment.startDate):'—'}</b> · ${state.data.sessions.length} sessions, scheduled relative to that date.</p>
-      <button class="btn-cancel" id="set-plan-start">Change start date</button>
+      <div class="backup-actions">
+        <button class="btn-cancel" id="set-plan-start">Change start date</button>
+        <button class="btn-cancel" id="set-plan-import">Import plan</button>
+      </div>
+      <input type="file" id="set-plan-file" accept="application/json,.json" hidden>
     </section>
     <section class="set-group">
       <h4>Your data</h4>
@@ -537,6 +613,8 @@ function openSettings(){
     <div class="sheet-actions"><button class="btn-save" id="x-done">Done</button></div>`);
   $('#x-done').onclick = closeSheet;
   $('#set-plan-start').onclick = openPlanStart;
+  const pi=$('#set-plan-import'), pf=$('#set-plan-file');
+  if(pi&&pf){ pi.onclick=()=>pf.click(); pf.onchange=()=>{ if(pf.files[0]) importPlan(pf.files[0]); pf.value=''; }; }
   $('#set-export').onclick = exportBackup;
   const im=$('#set-import'), f=$('#set-file');
   if(im&&f){ im.onclick=()=>f.click(); f.onchange=()=>{ if(f.files[0]) importBackup(f.files[0]); f.value=''; }; }
