@@ -20,18 +20,32 @@ const REST = new Set(REST_TYPES);
 const RECOVERY_DAY = new Set(RECOVERY_DAY_TYPES);
 // Free-text fields validated for type/length/safety (phase/day are checked separately).
 const TEXT_FIELDS = ['focus', 'surface', 'sprint', 'gym', 'warmup', 'cooldown'];
-// Obvious markup/script markers rejected outright (defence in depth — the engine
-// also escapes on render). Narrow on purpose so legitimate text like "RPE <8" passes.
-const UNSAFE_TEXT = /<\s*\/?\s*(script|img|iframe|svg)\b|javascript:/i;
+// Markup/script markers, plus the double-quote, rejected outright. Kept narrow so
+// legitimate text like "RPE <8" still passes: the renderer escapes <, > and & on
+// output, so those are safe in element context. A double-quote is NOT escaped by
+// the renderer, so a value rendered inside a double-quoted HTML attribute (e.g.
+// `aria-label="… ${focus} …"`) could break out and inject an event handler. Since
+// < and > are already neutralised on render, blocking the " delimiter is what
+// actually closes the attribute-injection vector — not the (now-corrected) earlier
+// assumption that render-escaping alone covered it.
+const UNSAFE_TEXT = /<\s*\/?\s*(script|img|iframe|svg)\b|javascript:|"/i;
+
+// A session id is interpolated UNescaped into HTML attributes by the renderer
+// (e.g. `data-id="${id}"`), so it must be restricted to characters that cannot
+// break out of a double-quoted attribute. Matches the seed scheme ("P1-W1-Mon").
+const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const safeIdChars = s => String(s).replace(/[^A-Za-z0-9._-]/g, '');
 
 /* Derive a stable, human-readable id from a session — e.g. phase "P1 Accel",
    week 1, day "Mon" → "P1-W1-Mon" (matches the seed scheme). Used only when a
    session is missing a usable/unique id; provided valid ids are preserved so the
    contract's "ids are never renumbered or reused" holds across re-validation. */
 function deriveId(se, index) {
-  const phaseToken = isNonEmptyStr(se.phase) ? se.phase.trim().split(/\s+/)[0] : 'S';
+  // Sanitise the phase/day tokens to the safe charset so a tainted phase
+  // (e.g. `P1" onclick="…`) can never carry unsafe chars into the derived id.
+  const phaseToken = (isNonEmptyStr(se.phase) ? safeIdChars(se.phase.trim().split(/\s+/)[0]) : '') || 'S';
   const wk = isInt(se.week) ? se.week : index + 1;
-  const day = isNonEmptyStr(se.day) ? se.day.trim() : `D${index + 1}`;
+  const day = (isNonEmptyStr(se.day) ? safeIdChars(se.day.trim()) : '') || `D${index + 1}`;
   return `${phaseToken}-W${wk}-${day}`;
 }
 
@@ -103,7 +117,7 @@ export function validatePlan(input, opts = {}) {
         if (v === undefined) continue;
         if (typeof v !== 'string') err('SESSION_FIELD_NOT_STRING', `${path}.${tf} must be a string.`, `${path}.${tf}`);
         else if (v.length > guards.maxTextLength) err('SESSION_TEXT_TOO_LONG', `${path}.${tf} exceeds the ${guards.maxTextLength}-character limit.`, `${path}.${tf}`);
-        else if (UNSAFE_TEXT.test(v)) err('SESSION_UNSAFE_TEXT', `${path}.${tf} contains markup or script that is not allowed.`, `${path}.${tf}`);
+        else if (UNSAFE_TEXT.test(v)) err('SESSION_UNSAFE_TEXT', `${path}.${tf} contains markup, script, or a double-quote that is unsafe to render.`, `${path}.${tf}`);
       }
       // Bound the id length (a provided id is otherwise kept verbatim).
       if (isNonEmptyStr(se.id) && se.id.trim().length > guards.maxIdLength) {
@@ -116,6 +130,12 @@ export function validatePlan(input, opts = {}) {
 
       // Lock id: keep a provided valid + unique id; otherwise derive a stable one.
       let id = isNonEmptyStr(se.id) ? se.id.trim() : '';
+      // A provided id with unsafe characters can't ship (it renders unescaped into
+      // attributes); drop it and derive a safe one, so the plan stays valid.
+      if (id && !SAFE_ID.test(id)) {
+        warn('SESSION_ID_UNSAFE', `${path}.id "${id}" has characters unsafe to render; a safe id was derived.`, `${path}.id`);
+        id = '';
+      }
       if (!id || seenIds.has(id)) {
         const base = deriveId(se, i);
         let candidate = base, k = 2;

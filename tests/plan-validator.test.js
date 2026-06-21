@@ -209,6 +209,31 @@ describe('validatePlan — content safety & bounds', () => {
     expect(validatePlan(plan([session({ sprint: 'x'.repeat(3000) })])).errors.some(e => e.code === 'SESSION_TEXT_TOO_LONG')).toBe(true);
     expect(validatePlan(plan([session({ id: 'A'.repeat(80) })])).errors.some(e => e.code === 'SESSION_ID_TOO_LONG')).toBe(true);
   });
+
+  it('rejects a double-quote in a prescription field (attribute-injection breakout)', () => {
+    // The renderer drops this text into a double-quoted HTML attribute and does
+    // not escape "; a quote would break out and inject an event handler.
+    const r = validatePlan(plan([session({ focus: 'speed" onmouseover="alert(document.cookie)' })]));
+    expect(r.ok, formatIssues(r)).toBe(false);
+    expect(r.errors.some(e => e.code === 'SESSION_UNSAFE_TEXT')).toBe(true);
+  });
+
+  it('drops an unsafe provided id and derives a safe one (renders unescaped into data-id)', () => {
+    const r = validatePlan(plan([session({ id: 'x" onclick="alert(1)', phase: 'P1 Accel', week: 1, day: 'Mon' })]));
+    expect(r.ok, formatIssues(r)).toBe(true);                       // plan stays valid
+    expect(r.warnings.some(w => w.code === 'SESSION_ID_UNSAFE')).toBe(true);
+    expect(r.plan.sessions[0].id).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+    expect(r.plan.sessions[0].id).not.toContain('"');
+  });
+
+  it('cannot carry unsafe chars from a tainted phase into a derived id', () => {
+    // No id provided, so the id is derived from phase/week/day; a hostile phase
+    // must not taint it.
+    const r = validatePlan(plan([session({ id: undefined, phase: 'P1" onclick="x', week: 1, day: 'Mon' })]));
+    expect(r.ok, formatIssues(r)).toBe(true);
+    expect(r.plan.sessions[0].id).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+    expect(r.plan.sessions[0].id).not.toContain('"');
+  });
 });
 
 // Rest-after-hard-day rules (ai-coach-design §5 rule 4). A RACE must be followed
