@@ -15,6 +15,14 @@ import {
 
 const isInt = n => typeof n === 'number' && Number.isInteger(n);
 const isNonEmptyStr = s => typeof s === 'string' && s.trim().length > 0;
+// A real calendar date in YYYY-MM-DD form — the format the engine's addDays()
+// parses. Rejects junk ("next monday") and impossible dates ("2026-02-30").
+const isISODate = s => {
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+};
 const HI = new Set(HIGH_INTENSITY_TYPES);
 const REST = new Set(REST_TYPES);
 const RECOVERY_DAY = new Set(RECOVERY_DAY_TYPES);
@@ -78,6 +86,12 @@ export function validatePlan(input, opts = {}) {
     }
     if (t.planVersion != null && !(isInt(t.planVersion) && t.planVersion >= 1)) {
       err('TEMPLATE_BAD_VERSION', 'template.planVersion must be an integer ≥ 1.', 'template.planVersion');
+    }
+    // startDate is OPTIONAL by design — the template is date-agnostic and an
+    // assignment binds it to a start date (main.js). But if a plan does carry one,
+    // it must be a real YYYY-MM-DD date, or addDays() yields Invalid Date on render.
+    if (t.startDate != null && !isISODate(t.startDate)) {
+      err('TEMPLATE_BAD_START_DATE', 'template.startDate, when present, must be a real calendar date in YYYY-MM-DD form.', 'template.startDate');
     }
     // Normalize: copy allow-listed fields only, lock sensible defaults.
     normTemplate = {};
@@ -233,6 +247,19 @@ function runVolumeGuards(sessions, g, err, warn) {
       }
     }
   }
+}
+
+/* Bridge the normalized { template, sessions } shape to the FLAT object the
+   existing engine renders: main.js reads sessions/startDate/rules/planVersion/
+   athleteId/… straight off the plan root (see seed.json + state.data), not under a
+   `template` key. Spreads the header fields to the root and keeps sessions. Pass
+   the `plan` from a successful validatePlan() result; returns null for a bad/null
+   plan. The template stays date-agnostic — startDate is only carried if the plan
+   set one; otherwise an assignment supplies it. */
+export function toEngineData(plan) {
+  if (!plan || typeof plan !== 'object' || Array.isArray(plan)) return null;
+  const { template, sessions } = plan;
+  return { ...(template || {}), sessions: Array.isArray(sessions) ? sessions : [] };
 }
 
 /* Format issues as a compact string to feed back to the model on a retry. */
