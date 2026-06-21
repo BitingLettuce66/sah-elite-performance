@@ -87,7 +87,10 @@ export async function deleteLog(sessionId) {
   const conn = await db();
   if (syncOn()) {
     const existing = await conn.get(LOGS, sessionId);
-    const tomb = { ...(existing || { sessionId }), sessionId, deleted: true, updatedAt: nowISO() };
+    // Nothing stored locally → no tombstone. Tombstoning a never-stored session
+    // would push an all-null row that could wipe a real cloud log on another device.
+    if (!existing) return;
+    const tomb = { ...existing, sessionId, deleted: true, updatedAt: nowISO() };
     const r = await conn.put(LOGS, tomb);
     await addToOutbox({ table: 'logs', op: 'upsert', key: sessionId, payload: tomb, updatedAt: tomb.updatedAt });
     return r;

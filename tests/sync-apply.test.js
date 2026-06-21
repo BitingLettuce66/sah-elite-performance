@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect } from 'vitest';
 import { applyRemoteLog, applyRemoteSetting } from '../src/sync.js';
-import { putLogQuiet, getLogRaw, loadAllLogs, getSetting } from '../src/db.js';
+import { putLogQuiet, getLogRaw, loadAllLogs, getSetting, allOutbox, clearOutbox } from '../src/db.js';
 
 const logRow = (o) => ({ athlete_id: 'uid', plan_id: 'current', done: null, deleted: false, ...o });
 
@@ -38,6 +38,19 @@ describe('applyRemoteLog (pull → LWW → IndexedDB)', () => {
     const raw = await getLogRaw('X5');
     expect(raw.done).toBe(true);                                  // remote field applied
     expect(raw.prescribedSnapshot).toEqual({ focus: 'Establish' }); // snapshot kept
+  });
+
+  it('re-queues a recovered prescribedSnapshot so it propagates, not just stored locally', async () => {
+    await clearOutbox();
+    await putLogQuiet({ sessionId: 'X6', athleteId: 'self', done: false, deleted: false,
+      prescribedSnapshot: { focus: 'Build' }, updatedAt: '2026-06-19T00:00:00.000Z' });
+    await applyRemoteLog(logRow({ session_id: 'X6', done: true, prescribed_snapshot: null, updated_at: '2026-06-20T00:00:00.000Z' }));
+    expect((await getLogRaw('X6')).prescribedSnapshot).toEqual({ focus: 'Build' });  // kept locally
+    const mut = (await allOutbox()).find(m => m.key === 'X6');
+    expect(mut).toBeTruthy();                                     // ...AND queued for push-up
+    expect(mut.payload.prescribedSnapshot).toEqual({ focus: 'Build' });
+    // re-stamped to "now" (chronologically newer than the past remote edit) so it wins LWW + propagates
+    expect(new Date(mut.updatedAt).getTime()).toBeGreaterThan(new Date('2026-06-20T00:00:00.000Z').getTime());
   });
 });
 
