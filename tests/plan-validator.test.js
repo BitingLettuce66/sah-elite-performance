@@ -126,6 +126,23 @@ describe('validatePlan — volume guards', () => {
     expect(r.warnings.some(w => w.code === 'VG_ROLLING_HIGH')).toBe(true);
   });
 
+  it('catches high-intensity load straddling a fixed-week boundary', () => {
+    // Regression guard: the rolling window must NOT degrade into fixed
+    // Math.floor(off/7) buckets. HIGH on offsets 5,6,8,9,11,12 buckets as
+    // {window0: 2, window1: 4} — neither trips the soft cap (4 is not > 4) and
+    // the longest consecutive run is 2 (not > 2), so a fixed-bucket guard would
+    // return ok with ZERO issues. But the densest rolling 7-day window (days
+    // 6–12) holds 5 high days, which must at least warn.
+    const r = validatePlan(plan(highAt([5, 6, 8, 9, 11, 12])));
+    expect(r.warnings.some(w => w.code === 'VG_ROLLING_HIGH'), formatIssues(r)).toBe(true);
+    // 5 is between the soft cap (4) and the hard cap (5): a warning, not a reject.
+    expect(r.ok).toBe(true);
+    expect(r.errors).toEqual([]);
+    // And it must NOT be the consecutive-day guard surfacing it (max run = 2),
+    // proving the rolling weekly window is what catches the straddle.
+    expect(r.warnings.some(w => w.code === 'VG_CONSECUTIVE_HIGH')).toBe(false);
+  });
+
   it('rejects multiple high-intensity sessions stacked on one calendar day', () => {
     const r = validatePlan(plan([
       session({ id: 'a', offsetDays: 0, type: 'HIGH', sprint: 'AM max' }),
