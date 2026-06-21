@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <title>SAH Elite — Design Styleguide (chooser)</title>
+  <meta name="robots" content="noindex" />
+
+  <!-- Display-font options. Fontsource variable fonts (one woff2 per family) keep all
+       three choices renderable. If offline, each falls back to the system sans so the
+       page still works — but open it online to judge the type properly. -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <style>
+    /* ---- Font A: Space Grotesk ---- */
+    @font-face{font-family:'Space Grotesk';font-style:normal;font-weight:300 700;font-display:swap;
+      src:url('https://cdn.jsdelivr.net/fontsource/fonts/space-grotesk:vf@latest/latin-wght-normal.woff2') format('woff2');}
+    /* ---- Font B: Hanken Grotesk ---- */
+    @font-face{font-family:'Hanken Grotesk';font-style:normal;font-weight:100 900;font-display:swap;
+      src:url('https://cdn.jsdelivr.net/fontsource/fonts/hanken-grotesk:vf@latest/latin-wght-normal.woff2') format('woff2');}
+    /* ---- Font C: Geist ---- */
+    @font-face{font-family:'Geist';font-style:normal;font-weight:100 900;font-display:swap;
+      src:url('https://cdn.jsdelivr.net/fontsource/fonts/geist:vf@latest/latin-wght-normal.woff2') format('woff2');}
+  </style>
+
+  <style>
+    /* ===================================================================
+       TOKENS — single source of truth, copied verbatim from
+       DESIGN-DIRECTION.md §Tokens. Edit there, mirror here.
+       =================================================================== */
+    :root{
+      /* Cool-neutral dark ramp */
+      --bg:#0A0A0B;
+      --surface-1:#131316;
+      --surface-2:#1A1A20;   /* card */
+      --surface-3:#20212B;   /* hover */
+      --hairline:rgba(255,255,255,.06);
+      --text:#F2F4F7;
+      --muted:#9A9CA3;
+      --faint:#6A6C72;
+      --accent-ink:#06223A;
+      --platinum:#C9CDD6;
+      --success:#5DAE7E;
+      --warn:#E0B15A;
+      --danger:#C0563E;
+
+      /* Accent — overridden per [data-accent]; default = option A */
+      --accent:#8FCBE8;
+      --accent-glow:rgba(143,203,232,.20);
+
+      /* Display font — overridden per [data-font]; default = option A */
+      --display:'Space Grotesk', ui-sans-serif, system-ui, -apple-system, sans-serif;
+      --body:-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+
+      /* Elevation */
+      --shadow-card:0 8px 24px rgba(0,0,0,.35);
+      --shadow-glow:0 6px 22px var(--accent-glow);
+
+      /* Radii */
+      --r-sm:12px; --r-md:16px; --r-lg:22px;
+
+      color-scheme:dark;
+    }
+
+    /* Accent options to render (A / B / C) */
+    [data-accent="A"]{ --accent:#8FCBE8; --accent-glow:rgba(143,203,232,.22); }   /* bright ice */
+    [data-accent="B"]{ --accent:#6FB7E0; --accent-glow:rgba(111,183,224,.22); }   /* deeper */
+    [data-accent="C"]{ --accent:#A9B4C2; --accent-glow:rgba(169,180,194,.18); }   /* near-platinum */
+
+    /* Display-font options to render (A / B / C) */
+    [data-font="A"]{ --display:'Space Grotesk', ui-sans-serif, system-ui, sans-serif; }
+    [data-font="B"]{ --display:'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif; }
+    [data-font="C"]{ --display:'Geist', ui-sans-serif, system-ui, sans-serif; }
+
+    /* ===================================================================
+       PAGE CHROME (the styleguide's own shell — kept calm + premium)
+       =================================================================== */
+    *{box-sizing:border-box;}
+    html,body{margin:0;}
+    body{
+      background:
+        radial-gradient(1200px 600px at 50% -10%, rgba(143,203,232,.05), transparent 60%),
+        var(--bg);
+      color:var(--text);
+      font-family:var(--body);
+      -webkit-font-smoothing:antialiased;
+      line-height:1.55;
+      padding:0 0 80px;
+    }
+    a{color:var(--accent);}
+    .wrap{max-width:1160px;margin:0 auto;padding:0 24px;}
+
+    .page-head{padding:56px 0 24px;}
+    .kicker{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint);margin:0 0 14px;}
+    .page-title{font-family:var(--display);font-weight:600;letter-spacing:-.015em;font-size:clamp(30px,5vw,46px);
+      line-height:1.05;margin:0 0 14px;}
+    .page-title em{font-style:normal;color:var(--accent);}
+    .page-sub{max-width:640px;font-size:15.5px;color:var(--muted);margin:0;}
+    .page-sub strong{color:var(--text);font-weight:600;}
+
+    .section{padding:40px 0 8px;}
+    .section-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin:0 0 6px;}
+    .section-head h2{font-family:var(--display);font-weight:600;letter-spacing:-.01em;font-size:23px;margin:0;}
+    .section-head .num{font-family:var(--display);font-weight:600;color:var(--faint);font-size:15px;}
+    .section-note{font-size:14px;color:var(--muted);margin:6px 0 26px;max-width:680px;}
+
+    .divider{height:1px;background:var(--hairline);margin:44px 0 0;}
+
+    /* Comparison grids */
+    .cmp{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
+    @media (max-width:880px){ .cmp{grid-template-columns:1fr;} }
+
+    .opt{background:var(--surface-1);border-radius:var(--r-lg);padding:18px;box-shadow:var(--shadow-card);}
+    .opt-head{display:flex;align-items:center;gap:11px;margin:2px 2px 18px;}
+    .opt-swatch{width:30px;height:30px;border-radius:9px;background:var(--accent);flex:none;
+      box-shadow:0 0 0 1px var(--hairline), var(--shadow-glow);}
+    .opt-id{font-family:var(--display);font-weight:600;font-size:15px;letter-spacing:.01em;}
+    .opt-id small{display:block;font-family:var(--body);font-weight:400;font-size:11.5px;letter-spacing:.04em;
+      color:var(--muted);margin-top:2px;text-transform:none;}
+    .opt-hex{margin-left:auto;font-size:11.5px;letter-spacing:.06em;color:var(--faint);
+      font-variant-numeric:tabular-nums;font-feature-settings:"tnum";}
+
+    /* ===================================================================
+       COMPONENTS — the representative set (built to DESIGN-DIRECTION moves)
+       =================================================================== */
+    .eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin:0 0 12px;}
+    .label{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);}
+
+    /* Card — surface-2, NO border, soft shadow, radius-md */
+    .card{background:var(--surface-2);border-radius:var(--r-md);padding:18px;box-shadow:var(--shadow-card);}
+    .card + .card{margin-top:14px;}
+    .card-hero{border-radius:var(--r-lg);padding:24px 22px;}
+
+    /* Today hero: eyebrow -> large display title -> meta with live dot */
+    .hero-eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin:0 0 10px;}
+    .hero-title{font-family:var(--display);font-weight:600;letter-spacing:-.01em;font-size:27px;line-height:1.12;
+      margin:0 0 12px;}
+    .hero-meta{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);letter-spacing:.02em;}
+    .live-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none;
+      box-shadow:0 0 0 4px var(--accent-glow);}
+
+    /* Week strip as subtle dots */
+    .week{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin:16px 0 4px;}
+    .wk{display:flex;flex-direction:column;align-items:center;gap:8px;}
+    .wk b{font-size:10px;letter-spacing:.06em;color:var(--faint);font-weight:500;font-family:var(--body);}
+    .wk i{width:7px;height:7px;border-radius:50%;background:var(--surface-3);display:block;}
+    .wk.done i{background:var(--success);}
+    .wk.today i{background:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);transform:scale(1.15);}
+    .wk.today b{color:var(--accent);}
+
+    /* Session-intensity pills — neutral by default; accent ONLY for HIGH/today */
+    .pills{display:flex;flex-wrap:wrap;gap:9px;}
+    .pill{font-size:10.5px;font-weight:700;letter-spacing:.12em;padding:5px 12px;border-radius:999px;
+      text-transform:uppercase;}
+    .pill-high{color:var(--accent-ink);background:var(--accent);}                                   /* the live state */
+    .pill-mod{color:var(--platinum);background:transparent;box-shadow:inset 0 0 0 1px var(--hairline);}
+    .pill-low{color:var(--muted);background:transparent;box-shadow:inset 0 0 0 1px var(--hairline);}
+    .pill-rest{color:var(--faint);background:transparent;box-shadow:inset 0 0 0 1px var(--hairline);}
+
+    /* Tonal block (sprint/gym): accent/platinum left-hairline + label, no full border */
+    .block{background:var(--surface-1);border-radius:var(--r-sm);padding:13px 15px;
+      border-left:2px solid var(--accent);}
+    .block.gym{border-left-color:var(--platinum);}
+    .block .co-h{display:block;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;margin:0 0 5px;color:var(--accent);}
+    .block.gym .co-h{color:var(--platinum);}
+    .block p{margin:0;font-size:14px;color:var(--text);}
+
+    /* Buttons — primary = the ONE accent fill + glow; ghost = hairline */
+    .btn-row{display:flex;gap:11px;}
+    .btn{flex:1;border:none;border-radius:var(--r-sm);padding:13px 16px;font-size:14px;font-weight:600;
+      letter-spacing:.02em;font-family:var(--body);cursor:pointer;transition:transform .12s cubic-bezier(.2,.8,.2,1),
+      background .16s ease,box-shadow .16s ease;}
+    .btn:active{transform:scale(.98);}
+    .btn-primary{color:var(--accent-ink);background:var(--accent);box-shadow:var(--shadow-glow);}
+    .btn-ghost{color:var(--text);background:transparent;box-shadow:inset 0 0 0 1px var(--hairline);}
+    .btn-ghost:hover{background:var(--surface-3);}
+
+    /* Segmented control — tonal elevation; accent only marks the active label */
+    .seg{display:inline-flex;background:var(--surface-1);border-radius:11px;padding:4px;gap:2px;}
+    .seg button{border:none;background:transparent;color:var(--muted);font-size:13px;font-weight:600;
+      padding:8px 18px;border-radius:8px;cursor:pointer;letter-spacing:.01em;font-family:var(--body);
+      transition:background .16s ease,color .16s ease;}
+    .seg button.on{background:var(--surface-3);color:var(--accent);box-shadow:var(--shadow-card);}
+
+    /* Stat block — big tabular metric */
+    .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+    .stat{background:var(--surface-2);border-radius:var(--r-md);padding:18px;box-shadow:var(--shadow-card);}
+    .stat .metric{font-family:var(--display);font-weight:700;font-size:34px;line-height:1;letter-spacing:-.01em;
+      color:var(--text);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";}
+    .stat .metric .unit{font-size:15px;font-weight:500;color:var(--muted);margin-left:3px;}
+    .stat .metric.accent{color:var(--accent);}
+    .stat .s-label{display:block;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:9px;}
+    .stat .s-trend{font-size:12px;color:var(--success);margin-top:5px;font-variant-numeric:tabular-nums;}
+
+    /* Empty / loading — refined, centered, calm */
+    .empty{text-align:center;padding:46px 22px;}
+    .empty .glyph{width:46px;height:46px;margin:0 auto 16px;color:var(--faint);opacity:.9;}
+    .empty h4{font-family:var(--display);font-weight:600;font-size:18px;margin:0 0 8px;color:var(--text);}
+    .empty p{margin:0 auto 18px;font-size:13.5px;color:var(--muted);max-width:240px;}
+
+    /* Bottom nav — active = accent, rest faint; slightly larger icons */
+    .tabbar{display:grid;grid-template-columns:repeat(4,1fr);background:rgba(20,20,23,.86);
+      backdrop-filter:blur(12px);border-top:1px solid var(--hairline);}
+    .tabbar button{background:transparent;border:none;color:var(--faint);font-size:10px;letter-spacing:.05em;
+      padding:10px 0 9px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;font-family:var(--body);}
+    .tabbar .ic{width:24px;height:24px;}
+    .tabbar button.on{color:var(--accent);}
+
+    /* Font-specimen column */
+    .spec .opt-head{margin-bottom:22px;}
+    .spec-word{font-family:var(--display);font-weight:700;letter-spacing:.04em;font-size:22px;margin:0 0 4px;}
+    .spec-word span{color:var(--muted);font-weight:500;}
+    .spec-display{font-family:var(--display);font-weight:600;letter-spacing:-.01em;font-size:30px;line-height:1.08;margin:18px 0 6px;}
+    .spec-metric{font-family:var(--display);font-weight:700;font-size:52px;line-height:1;letter-spacing:-.01em;
+      color:var(--accent);font-variant-numeric:tabular-nums;font-feature-settings:"tnum";margin:14px 0 4px;}
+    .spec-metric small{font-size:18px;color:var(--muted);font-weight:500;}
+    .spec-h{font-family:var(--display);font-weight:600;font-size:19px;margin:18px 0 6px;}
+    .spec-glyphs{font-family:var(--display);font-size:18px;letter-spacing:.02em;color:var(--muted);margin:14px 0 0;
+      font-variant-numeric:tabular-nums;}
+    .spec-body{font-size:13.5px;color:var(--muted);margin:14px 0 0;}
+    .spec-tag{font-size:12px;color:var(--faint);margin:16px 0 0;line-height:1.5;}
+
+    /* ===================================================================
+       LIVE PREVIEW — pick a combination, see a real screen
+       =================================================================== */
+    .live-grid{display:grid;grid-template-columns:300px 1fr;gap:40px;align-items:start;}
+    @media (max-width:880px){ .live-grid{grid-template-columns:1fr;} }
+
+    .controls{position:sticky;top:24px;}
+    .ctrl-group{margin:0 0 24px;}
+    .ctrl-group > .label{display:block;margin:0 0 12px;}
+    .choices{display:flex;flex-direction:column;gap:8px;}
+    .choice{display:flex;align-items:center;gap:12px;text-align:left;width:100%;cursor:pointer;
+      background:var(--surface-1);border:1px solid transparent;border-radius:12px;padding:12px 14px;color:var(--text);
+      font-family:var(--body);font-size:14px;transition:border-color .16s ease,background .16s ease;}
+    .choice:hover{background:var(--surface-2);}
+    .choice.on{border-color:var(--accent);background:var(--surface-2);}
+    .choice .dot{width:22px;height:22px;border-radius:7px;flex:none;box-shadow:inset 0 0 0 1px var(--hairline);}
+    .choice .ch-name{font-weight:600;}
+    .choice .ch-desc{display:block;font-size:11.5px;color:var(--muted);font-weight:400;margin-top:1px;}
+    .choice .tick{margin-left:auto;color:var(--accent);opacity:0;font-weight:700;}
+    .choice.on .tick{opacity:1;}
+    .choice.font-choice .ch-name{font-size:16px;}
+
+    .readout{background:var(--surface-1);border-radius:14px;padding:16px;margin-top:8px;font-size:13px;line-height:1.6;}
+    .readout .label{display:block;margin-bottom:8px;}
+    .readout code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent);font-size:12.5px;}
+    .readout .pick{color:var(--text);font-weight:600;}
+
+    /* Phone frame */
+    .phone{width:100%;max-width:390px;margin:0 auto;background:var(--bg);border-radius:38px;
+      box-shadow:0 0 0 10px #050506, 0 30px 70px rgba(0,0,0,.6);overflow:hidden;}
+    .phone-top{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 12px;
+      border-bottom:1px solid var(--hairline);background:linear-gradient(var(--bg),rgba(10,10,11,.4));}
+    .phone-avatar{width:32px;height:32px;border-radius:50%;background:var(--accent);color:var(--accent-ink);
+      display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;}
+    .phone-brand{font-family:var(--display);font-weight:700;letter-spacing:.12em;font-size:13px;color:var(--accent);}
+    .phone-brand span{color:var(--muted);font-weight:500;}
+    .phone-phase{font-size:11px;color:var(--muted);letter-spacing:.04em;}
+    .phone-body{padding:20px 18px 22px;display:flex;flex-direction:column;gap:18px;min-height:520px;}
+    .phone-section + .phone-section{margin-top:2px;}
+
+    .reduced-note{font-size:12px;color:var(--faint);text-align:center;margin:22px auto 0;max-width:520px;}
+    .foot{padding:48px 0 0;font-size:12.5px;color:var(--faint);text-align:center;}
+    .foot code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);}
+
+    /* Token-ramp reference */
+    .ramp{display:flex;flex-wrap:wrap;gap:10px;}
+    .ramp .sw{border-radius:10px;padding:14px 12px;min-width:118px;flex:1;box-shadow:inset 0 0 0 1px var(--hairline);}
+    .ramp .sw b{display:block;font-size:12px;font-weight:600;}
+    .ramp .sw span{display:block;font-size:11px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums;}
+
+    @media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important;} }
+  </style>
+</head>
+<body>
+
+  <div class="wrap">
+    <header class="page-head">
+      <p class="kicker">SAH Elite Performance · design direction v2</p>
+      <h1 class="page-title">Quiet Luxury, <em>executed.</em></h1>
+      <p class="page-sub">A chooser, not a verdict. Below are the <strong>three accent options</strong> and
+      <strong>three display-font options</strong> from <code>DESIGN-DIRECTION.md</code>, applied to a real component set.
+      Compare them side-by-side, then use the live preview at the bottom to try a combination and pick your favourite.
+      Nothing here touches the live app.</p>
+    </header>
+  </div>
+
+  <!-- ============================ ACCENTS ============================ -->
+  <div class="wrap">
+    <section class="section">
+      <div class="section-head"><span class="num">01</span><h2>Accent</h2></div>
+      <p class="section-note">The accent is reserved for the single primary action and the “today / live” state —
+      everywhere else stays neutral. Each column applies a different accent to the same components, so the only thing
+      changing is the colour.</p>
+
+      <div class="cmp">
+        <!-- Accent A -->
+        <div class="opt" data-accent="A">
+          <div class="opt-head">
+            <span class="opt-swatch"></span>
+            <span class="opt-id">Accent A<small>Bright ice</small></span>
+            <span class="opt-hex">#8FCBE8</span>
+          </div>
+          <div class="card card-hero">
+            <p class="hero-eyebrow">Today · Build phase</p>
+            <h3 class="hero-title">Tempo Intervals</h3>
+            <div class="hero-meta"><span class="live-dot"></span> 6 × 800m · live now</div>
+          </div>
+          <div class="card" style="margin-top:14px">
+            <div class="pills">
+              <span class="pill pill-high">High</span>
+              <span class="pill pill-mod">Mod</span>
+              <span class="pill pill-low">Low</span>
+              <span class="pill pill-rest">Rest</span>
+            </div>
+            <div class="btn-row" style="margin-top:16px">
+              <button class="btn btn-primary">Mark done</button>
+              <button class="btn btn-ghost">Log</button>
+            </div>
+          </div>
+          <div class="stats" style="margin-top:14px">
+            <div class="stat"><div class="metric accent">14<span class="unit">days</span></div><span class="s-label">Streak</span></div>
+            <div class="stat"><div class="metric">12.84<span class="unit">s</span></div><span class="s-label">100m PB</span></div>
+          </div>
+        </div>
+
+        <!-- Accent B -->
+        <div class="opt" data-accent="B">
+          <div class="opt-head">
+            <span class="opt-swatch"></span>
+            <span class="opt-id">Accent B<small>Deeper blue</small></span>
+            <span class="opt-hex">#6FB7E0</span>
+          </div>
+          <div class="card card-hero">
+            <p class="hero-eyebrow">Today · Build phase</p>
+            <h3 class="hero-title">Tempo Intervals</h3>
+            <div class="hero-meta"><span class="live-dot"></span> 6 × 800m · live now</div>
+          </div>
+          <div class="card" style="margin-top:14px">
+            <div class="pills">
+              <span class="pill pill-high">High</span>
+              <span class="pill pill-mod">Mod</span>
+              <span class="pill pill-low">Low</span>
+              <span class="pill pill-rest">Rest</span>
+            </div>
+            <div class="btn-row" style="margin-top:16px">
+              <button class="btn btn-primary">Mark done</button>
+              <button class="btn btn-ghost">Log</button>
+            </div>
+          </div>
+          <div class="stats" style="margin-top:14px">
+            <div class="stat"><div class="metric accent">14<span class="unit">days</span></div><span class="s-label">Streak</span></div>
+            <div class="stat"><div class="metric">12.84<span class="unit">s</span></div><span class="s-label">100m PB</span></div>
+          </div>
+        </div>
+
+        <!-- Accent C -->
+        <div class="opt" data-accent="C">
+          <div class="opt-head">
+            <span class="opt-swatch"></span>
+            <span class="opt-id">Accent C<small>Near-platinum</small></span>
+            <span class="opt-hex">#A9B4C2</span>
+          </div>
+          <div class="card card-hero">
+            <p class="hero-eyebrow">Today · Build phase</p>
+            <h3 class="hero-title">Tempo Intervals</h3>
+            <div class="hero-meta"><span class="live-dot"></span> 6 × 800m · live now</div>
+          </div>
+          <div class="card" style="margin-top:14px">
+            <div class="pills">
+              <span class="pill pill-high">High</span>
+              <span class="pill pill-mod">Mod</span>
+              <span class="pill pill-low">Low</span>
+              <span class="pill pill-rest">Rest</span>
+            </div>
+            <div class="btn-row" style="margin-top:16px">
+              <button class="btn btn-primary">Mark done</button>
+              <button class="btn btn-ghost">Log</button>
+            </div>
+          </div>
+          <div class="stats" style="margin-top:14px">
+            <div class="stat"><div class="metric accent">14<span class="unit">days</span></div><span class="s-label">Streak</span></div>
+            <div class="stat"><div class="metric">12.84<span class="unit">s</span></div><span class="s-label">100m PB</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ============================ FONTS ============================ -->
+    <section class="section">
+      <div class="section-head"><span class="num">02</span><h2>Display font</h2></div>
+      <p class="section-note">The display font carries the wordmark, headings and big metrics — body text stays a
+      system humanist sans in every case. Look at the wordmark, the title, the numerals and the “g / a / 1” shapes.</p>
+
+      <div class="cmp">
+        <!-- Font A -->
+        <div class="opt spec" data-font="A">
+          <div class="opt-head">
+            <span class="opt-id">Font A<small>Space Grotesk</small></span>
+          </div>
+          <p class="spec-word">SAH <span>ELITE</span></p>
+          <p class="spec-display">Tempo Intervals</p>
+          <p class="spec-metric">12.84<small>s</small></p>
+          <p class="spec-h">Build phase · Week 6</p>
+          <p class="spec-glyphs">ag 1234567890 — Gg Qq</p>
+          <p class="spec-tag">Geometric, slightly technical. Distinctive without shouting — reads “engineered / sport-tech.”</p>
+        </div>
+
+        <!-- Font B -->
+        <div class="opt spec" data-font="B">
+          <div class="opt-head">
+            <span class="opt-id">Font B<small>Hanken Grotesk</small></span>
+          </div>
+          <p class="spec-word">SAH <span>ELITE</span></p>
+          <p class="spec-display">Tempo Intervals</p>
+          <p class="spec-metric">12.84<small>s</small></p>
+          <p class="spec-h">Build phase · Week 6</p>
+          <p class="spec-glyphs">ag 1234567890 — Gg Qq</p>
+          <p class="spec-tag">Warmer, friendlier grotesk. Soft, approachable, modern — “premium consumer wellness.”</p>
+        </div>
+
+        <!-- Font C -->
+        <div class="opt spec" data-font="C">
+          <div class="opt-head">
+            <span class="opt-id">Font C<small>Geist</small></span>
+          </div>
+          <p class="spec-word">SAH <span>ELITE</span></p>
+          <p class="spec-display">Tempo Intervals</p>
+          <p class="spec-metric">12.84<small>s</small></p>
+          <p class="spec-h">Build phase · Week 6</p>
+          <p class="spec-glyphs">ag 1234567890 — Gg Qq</p>
+          <p class="spec-tag">Neutral, precise, Swiss. Quietest of the three — “restrained, expensive, software-grade.”</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ============================ LIVE PREVIEW ============================ -->
+    <section class="section">
+      <div class="section-head"><span class="num">03</span><h2>Live preview</h2></div>
+      <p class="section-note">Pick an accent and a font, and the phone updates. This is the real Today screen plus an
+      empty state — including the bottom nav, session pills, segmented control and stat block.</p>
+
+      <div class="live-grid">
+        <!-- Controls -->
+        <div class="controls">
+          <div class="ctrl-group">
+            <span class="label">Accent</span>
+            <div class="choices" id="accent-choices">
+              <button class="choice on" data-accent-pick="A">
+                <span class="dot" style="background:#8FCBE8"></span>
+                <span><span class="ch-name">A · Bright ice</span><span class="ch-desc">#8FCBE8</span></span>
+                <span class="tick">✓</span>
+              </button>
+              <button class="choice" data-accent-pick="B">
+                <span class="dot" style="background:#6FB7E0"></span>
+                <span><span class="ch-name">B · Deeper</span><span class="ch-desc">#6FB7E0</span></span>
+                <span class="tick">✓</span>
+              </button>
+              <button class="choice" data-accent-pick="C">
+                <span class="dot" style="background:#A9B4C2"></span>
+                <span><span class="ch-name">C · Near-platinum</span><span class="ch-desc">#A9B4C2</span></span>
+                <span class="tick">✓</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="ctrl-group">
+            <span class="label">Display font</span>
+            <div class="choices" id="font-choices">
+              <button class="choice font-choice on" data-font-pick="A" style="font-family:'Space Grotesk',sans-serif">
+                <span><span class="ch-name">Space Grotesk</span><span class="ch-desc" style="font-family:var(--body)">A · geometric / technical</span></span>
+                <span class="tick">✓</span>
+              </button>
+              <button class="choice font-choice" data-font-pick="B" style="font-family:'Hanken Grotesk',sans-serif">
+                <span><span class="ch-name">Hanken Grotesk</span><span class="ch-desc" style="font-family:var(--body)">B · warm / friendly</span></span>
+                <span class="tick">✓</span>
+              </button>
+              <button class="choice font-choice" data-font-pick="C" style="font-family:'Geist',sans-serif">
+                <span><span class="ch-name">Geist</span><span class="ch-desc" style="font-family:var(--body)">C · neutral / Swiss</span></span>
+                <span class="tick">✓</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="readout">
+            <span class="label">Your pick</span>
+            Accent <span class="pick" id="ro-accent">A · Bright ice</span> <code id="ro-hex">#8FCBE8</code><br>
+            Font <span class="pick" id="ro-font">Space Grotesk</span>
+          </div>
+        </div>
+
+        <!-- Phone -->
+        <div>
+          <div class="phone" id="phone" data-accent="A" data-font="A">
+            <div class="phone-top">
+              <div class="phone-avatar">S</div>
+              <div class="phone-brand">SAH <span>ELITE</span></div>
+              <div class="phone-phase">Build · Wk 6</div>
+            </div>
+            <div class="phone-body">
+
+              <!-- Today hero -->
+              <div class="phone-section">
+                <div class="card card-hero">
+                  <p class="hero-eyebrow">Saturday · Today</p>
+                  <h3 class="hero-title">Tempo Intervals</h3>
+                  <div class="hero-meta"><span class="live-dot"></span> 6 × 800m @ 5k pace · 48 min</div>
+                  <div class="week">
+                    <div class="wk done"><b>M</b><i></i></div>
+                    <div class="wk done"><b>T</b><i></i></div>
+                    <div class="wk done"><b>W</b><i></i></div>
+                    <div class="wk"><b>T</b><i></i></div>
+                    <div class="wk"><b>F</b><i></i></div>
+                    <div class="wk today"><b>S</b><i></i></div>
+                    <div class="wk"><b>S</b><i></i></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tonal blocks + pills -->
+              <div class="phone-section card">
+                <div class="block" style="margin-bottom:10px">
+                  <span class="co-h">Sprint</span>
+                  <p>6 × 800m, 90s float recovery. Hold even splits.</p>
+                </div>
+                <div class="block gym">
+                  <span class="co-h">Gym</span>
+                  <p>Posterior chain — RDL 3×6, Nordics 3×5.</p>
+                </div>
+                <div class="pills" style="margin-top:14px">
+                  <span class="pill pill-high">High</span>
+                  <span class="pill pill-mod">Mod</span>
+                  <span class="pill pill-low">Low</span>
+                  <span class="pill pill-rest">Rest</span>
+                </div>
+                <div class="btn-row" style="margin-top:16px">
+                  <button class="btn btn-primary">Mark done</button>
+                  <button class="btn btn-ghost">Log session</button>
+                </div>
+              </div>
+
+              <!-- Segmented control + stats -->
+              <div class="phone-section">
+                <div class="seg" style="margin-bottom:14px">
+                  <button class="on">Calendar</button>
+                  <button>List</button>
+                </div>
+                <div class="stats">
+                  <div class="stat"><div class="metric accent">14<span class="unit">d</span></div><span class="s-label">Streak</span><span class="s-trend">▲ best yet</span></div>
+                  <div class="stat"><div class="metric">12.84<span class="unit">s</span></div><span class="s-label">100m PB</span><span class="s-trend">▲ 0.11</span></div>
+                </div>
+              </div>
+
+              <!-- Empty state -->
+              <div class="phone-section card">
+                <div class="empty">
+                  <svg class="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 20v-5M12 20v-9M18 20V8"/><path d="M3 20h18"/></svg>
+                  <h4>No sessions logged yet</h4>
+                  <p>Your progress charts appear here once you’ve logged a few sessions.</p>
+                  <div class="btn-row" style="max-width:200px;margin:0 auto"><button class="btn btn-ghost">Log your first</button></div>
+                </div>
+              </div>
+
+            </div>
+            <!-- Bottom nav -->
+            <nav class="tabbar">
+              <button class="on"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Today</button>
+              <button><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></svg>History</button>
+              <button><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 20v-5M12 20v-9M18 20V8"/></svg>Progress</button>
+              <button><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M8 7l4-4 4 4M5 12v7a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-7"/></svg>Share</button>
+            </nav>
+          </div>
+          <p class="reduced-note">Tip: this combination is what would ship. Tell Claude e.g. “Accent B + Geist” and it’ll wire it into the live app.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ============================ TOKEN RAMP ============================ -->
+    <section class="section">
+      <div class="section-head"><span class="num">04</span><h2>Token ramp</h2></div>
+      <p class="section-note">The shared cool-neutral foundation every option sits on (unchanged across choices).</p>
+      <div class="ramp">
+        <div class="sw" style="background:#0A0A0B"><b>bg</b><span>#0A0A0B</span></div>
+        <div class="sw" style="background:#131316"><b>surface-1</b><span>#131316</span></div>
+        <div class="sw" style="background:#1A1A20"><b>surface-2</b><span>#1A1A20</span></div>
+        <div class="sw" style="background:#20212B"><b>surface-3</b><span>#20212B</span></div>
+        <div class="sw" style="background:#1A1A20;color:#F2F4F7"><b>text</b><span>#F2F4F7</span></div>
+        <div class="sw" style="background:#1A1A20;color:#9A9CA3"><b>muted</b><span>#9A9CA3</span></div>
+        <div class="sw" style="background:#1A1A20;color:#6A6C72"><b>faint</b><span>#6A6C72</span></div>
+        <div class="sw" style="background:#C9CDD6;color:#06223A"><b>platinum</b><span>#C9CDD6</span></div>
+        <div class="sw" style="background:#5DAE7E;color:#06223A"><b>success</b><span>#5DAE7E</span></div>
+        <div class="sw" style="background:#E0B15A;color:#06223A"><b>warn</b><span>#E0B15A</span></div>
+        <div class="sw" style="background:#C0563E;color:#fff"><b>danger</b><span>#C0563E</span></div>
+      </div>
+    </section>
+
+    <p class="foot">Self-contained chooser · served at <code>/styleguide/</code> · the live app is untouched.</p>
+  </div>
+
+  <script>
+    (function(){
+      var phone   = document.getElementById('phone');
+      var accentNames = { A:'A · Bright ice', B:'B · Deeper', C:'C · Near-platinum' };
+      var accentHex   = { A:'#8FCBE8', B:'#6FB7E0', C:'#A9B4C2' };
+      var fontNames   = { A:'Space Grotesk', B:'Hanken Grotesk', C:'Geist' };
+
+      function setActive(container, attr, value){
+        container.querySelectorAll('button').forEach(function(b){
+          b.classList.toggle('on', b.getAttribute(attr) === value);
+        });
+      }
+
+      document.getElementById('accent-choices').addEventListener('click', function(e){
+        var btn = e.target.closest('[data-accent-pick]'); if(!btn) return;
+        var v = btn.getAttribute('data-accent-pick');
+        phone.setAttribute('data-accent', v);
+        setActive(this, 'data-accent-pick', v);
+        document.getElementById('ro-accent').textContent = accentNames[v];
+        document.getElementById('ro-hex').textContent = accentHex[v];
+      });
+
+      document.getElementById('font-choices').addEventListener('click', function(e){
+        var btn = e.target.closest('[data-font-pick]'); if(!btn) return;
+        var v = btn.getAttribute('data-font-pick');
+        phone.setAttribute('data-font', v);
+        setActive(this, 'data-font-pick', v);
+        document.getElementById('ro-font').textContent = fontNames[v];
+      });
+    })();
+  </script>
+</body>
+</html>
