@@ -112,18 +112,36 @@ describe('validatePlan — id locking', () => {
 });
 
 describe('validatePlan — volume guards', () => {
-  it('rejects more than the hard weekly high-intensity cap', () => {
-    // 7 HIGH days in one 7-day window (offsets 0..6) > hard cap 6.
+  it('rejects too many high-intensity days in a rolling 7-day window', () => {
+    // 7 HIGH days within a 7-day window (offsets 0..6) > rolling error cap (5).
     const r = validatePlan(plan(highAt([0, 1, 2, 3, 4, 5, 6])));
     expect(r.ok).toBe(false);
-    expect(r.errors.some(e => e.code === 'VG_WEEKLY_HIGH_CAP')).toBe(true);
+    expect(r.errors.some(e => e.code === 'VG_ROLLING_HIGH_CAP')).toBe(true);
   });
 
-  it('warns (but does not reject) above the soft weekly cap', () => {
-    // 5 HIGH days in window 0, spaced so no >3 run: offsets 0,1,3,5,6.
+  it('warns (but does not reject) at 5 high days in a rolling 7-day window', () => {
+    // 5 HIGH in window 0, spaced so no >2 consecutive run: offsets 0,1,3,5,6.
     const r = validatePlan(plan(highAt([0, 1, 3, 5, 6])));
     expect(r.ok).toBe(true);
-    expect(r.warnings.some(w => w.code === 'VG_WEEKLY_HIGH')).toBe(true);
+    expect(r.warnings.some(w => w.code === 'VG_ROLLING_HIGH')).toBe(true);
+  });
+
+  it('rejects multiple high-intensity sessions stacked on one calendar day', () => {
+    const r = validatePlan(plan([
+      session({ id: 'a', offsetDays: 0, type: 'HIGH', sprint: 'AM max' }),
+      session({ id: 'b', offsetDays: 0, type: 'HIGH', sprint: 'midday max' }),
+      session({ id: 'c', offsetDays: 0, type: 'HIGH', sprint: 'PM max' }),
+    ]));
+    expect(r.ok).toBe(false);
+    expect(r.errors.some(e => e.code === 'VG_DAILY_HIGH_CAP')).toBe(true);
+  });
+
+  it('accepts a legit two-a-day (two high-intensity sessions on one day)', () => {
+    const r = validatePlan(plan([
+      session({ id: 'a', offsetDays: 0, type: 'HIGH', sprint: 'AM speed' }),
+      session({ id: 'b', offsetDays: 0, type: 'RACE', sprint: 'PM 100m' }),
+    ]));
+    expect(r.errors.some(e => e.code === 'VG_DAILY_HIGH_CAP')).toBe(false);
   });
 
   it('rejects a RACE not followed by a recovery day', () => {
@@ -147,6 +165,32 @@ describe('validatePlan — volume guards', () => {
     const s = session({ evil: 'keep' });
     validatePlan(plan([s]));
     expect(s).toHaveProperty('evil', 'keep');
+  });
+});
+
+describe('validatePlan — content safety & bounds', () => {
+  it('accepts a DELOAD day with empty prescription (complete-rest deload)', () => {
+    expect(validatePlan(plan([session({ type: 'DELOAD', sprint: '', gym: '' })])).ok).toBe(true);
+  });
+
+  it('still requires prescription text on a TAPER day', () => {
+    expect(validatePlan(plan([session({ type: 'TAPER', sprint: '', gym: '' })])).errors.some(e => e.code === 'SESSION_NO_PRESCRIPTION')).toBe(true);
+  });
+
+  it('rejects a non-string free-text field (type confusion)', () => {
+    const r = validatePlan(plan([session({ gym: { a: 1 } })]));
+    expect(r.ok).toBe(false);
+    expect(r.errors.some(e => e.code === 'SESSION_FIELD_NOT_STRING')).toBe(true);
+  });
+
+  it('rejects markup/script in a prescription field, but allows a legit "<"', () => {
+    expect(validatePlan(plan([session({ sprint: '<script>alert(1)</script> 6x20m' })])).errors.some(e => e.code === 'SESSION_UNSAFE_TEXT')).toBe(true);
+    expect(validatePlan(plan([session({ gym: 'Back squat 3x5 @ RPE <8' })])).errors.some(e => e.code === 'SESSION_UNSAFE_TEXT')).toBe(false);
+  });
+
+  it('rejects an over-long prescription and an over-long id', () => {
+    expect(validatePlan(plan([session({ sprint: 'x'.repeat(3000) })])).errors.some(e => e.code === 'SESSION_TEXT_TOO_LONG')).toBe(true);
+    expect(validatePlan(plan([session({ id: 'A'.repeat(80) })])).errors.some(e => e.code === 'SESSION_ID_TOO_LONG')).toBe(true);
   });
 });
 

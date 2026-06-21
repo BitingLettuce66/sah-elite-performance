@@ -21,9 +21,10 @@ export const KNOWN_TYPES = ['HIGH', 'MOD', 'LOW', 'DELOAD', 'TAPER', 'RECOVERY',
 // The high-CNS days the volume guards police.
 export const HIGH_INTENSITY_TYPES = ['HIGH', 'RACE'];
 
-// Types for which prescription text (sprint/gym) may legitimately be empty —
-// it's a rest day, the card renders a "Rest" callout.
-export const REST_TYPES = ['RECOVERY'];
+// Types whose prescription text (sprint/gym) may legitimately be empty — a full
+// rest day (RECOVERY) or a complete-rest deload day (DELOAD). TAPER still needs
+// prescription text; it carries reduced but real work.
+export const REST_TYPES = ['RECOVERY', 'DELOAD'];
 
 // Types that count as adequate recovery the day AFTER a hard (RACE) day — a true
 // rest day (RECOVERY), or a deliberately reduced-load day (DELOAD/TAPER). Wider
@@ -51,8 +52,9 @@ export const PLAN_SOURCES = ['ai', 'coach', 'imported'];
    ones are caught. All tunable per call via
    validatePlan(plan, { guards: {...} }). */
 export const VOLUME_GUARDS = {
-  highIntensityPerWeekWarn: 4,    // > this in a 7-day window → warning
-  highIntensityPerWeekError: 6,   // > this → error (reject)
+  highIntensityRolling7Warn: 4,   // > this in ANY rolling 7-day window → warning
+  highIntensityRolling7Error: 5,  // > this → error (rolling window catches load spread to evade fixed weeks)
+  highIntensityPerDayError: 2,    // > this many high-intensity sessions on ONE calendar day → error
   consecutiveHighDaysWarn: 2,     // > this many back-to-back high days → warning
   consecutiveHighDaysError: 3,    // > this → error
   rampWeekOverWeekWarn: 2,        // high-day jump vs a non-trivial prior week → warning
@@ -60,4 +62,6 @@ export const VOLUME_GUARDS = {
   enforceRestDayAfterDeload: true,// a DELOAD may not be immediately followed by a hard (HIGH/RACE) day → error
   minSessions: 1,
   maxOffsetDays: 730,             // ~2 years — sanity ceiling on offsetDays
+  maxIdLength: 64,                // sane bound on a session id
+  maxTextLength: 2000,            // sane bound on any single free-text field
 };

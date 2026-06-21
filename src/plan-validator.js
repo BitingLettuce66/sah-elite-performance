@@ -18,6 +18,11 @@ const isNonEmptyStr = s => typeof s === 'string' && s.trim().length > 0;
 const HI = new Set(HIGH_INTENSITY_TYPES);
 const REST = new Set(REST_TYPES);
 const RECOVERY_DAY = new Set(RECOVERY_DAY_TYPES);
+// Free-text fields validated for type/length/safety (phase/day are checked separately).
+const TEXT_FIELDS = ['focus', 'surface', 'sprint', 'gym', 'warmup', 'cooldown'];
+// Obvious markup/script markers rejected outright (defence in depth — the engine
+// also escapes on render). Narrow on purpose so legitimate text like "RPE <8" passes.
+const UNSAFE_TEXT = /<\s*\/?\s*(script|img|iframe|svg)\b|javascript:/i;
 
 /* Derive a stable, human-readable id from a session — e.g. phase "P1 Accel",
    week 1, day "Mon" → "P1-W1-Mon" (matches the seed scheme). Used only when a
@@ -92,6 +97,19 @@ export function validatePlan(input, opts = {}) {
         err('SESSION_NO_PRESCRIPTION', `${path} (${se.type}) needs non-empty sprint or gym text.`, path);
       }
 
+      // Free-text fields must be strings, length-bounded, and free of markup/script.
+      for (const tf of TEXT_FIELDS) {
+        const v = se[tf];
+        if (v === undefined) continue;
+        if (typeof v !== 'string') err('SESSION_FIELD_NOT_STRING', `${path}.${tf} must be a string.`, `${path}.${tf}`);
+        else if (v.length > guards.maxTextLength) err('SESSION_TEXT_TOO_LONG', `${path}.${tf} exceeds the ${guards.maxTextLength}-character limit.`, `${path}.${tf}`);
+        else if (UNSAFE_TEXT.test(v)) err('SESSION_UNSAFE_TEXT', `${path}.${tf} contains markup or script that is not allowed.`, `${path}.${tf}`);
+      }
+      // Bound the id length (a provided id is otherwise kept verbatim).
+      if (isNonEmptyStr(se.id) && se.id.trim().length > guards.maxIdLength) {
+        err('SESSION_ID_TOO_LONG', `${path}.id exceeds the ${guards.maxIdLength}-character limit.`, `${path}.id`);
+      }
+
       // Normalize: allow-listed fields only (drop free-form keys).
       const n = {};
       for (const f of SESSION_FIELDS) if (se[f] !== undefined) n[f] = se[f];
@@ -126,15 +144,30 @@ export function validatePlan(input, opts = {}) {
 function runVolumeGuards(sessions, g, err, warn) {
   const valid = sessions.filter(s => Number.isInteger(s.offsetDays) && s.offsetDays >= 0 && KNOWN_TYPES.includes(s.type));
 
-  // Weekly high-intensity load (7-day windows).
+  const highOffsets = valid.filter(s => HI.has(s.type)).map(s => s.offsetDays);
+
+  // Per-calendar-day high-intensity cap (catches several max efforts stacked on one day).
+  const perDay = new Map();
+  for (const o of highOffsets) perDay.set(o, (perDay.get(o) || 0) + 1);
+  for (const [day, count] of perDay) {
+    if (count > g.highIntensityPerDayError) err('VG_DAILY_HIGH_CAP', `Day ${day}: ${count} high-intensity (HIGH/RACE) sessions on one calendar day exceeds the cap of ${g.highIntensityPerDayError}.`, `offset:${day}`);
+  }
+
+  // Rolling 7-day high-intensity window (catches load spread across fixed-week boundaries).
+  const sortedHigh = [...highOffsets].sort((a, b) => a - b);
+  let peak = 0, peakAt = 0;
+  for (const d of sortedHigh) {
+    const c = sortedHigh.filter(o => o >= d && o <= d + 6).length;
+    if (c > peak) { peak = c; peakAt = d; }
+  }
+  if (peak > g.highIntensityRolling7Error) err('VG_ROLLING_HIGH_CAP', `${peak} high-intensity days within a 7-day window (from day ${peakAt}) exceeds the cap of ${g.highIntensityRolling7Error}.`, `offset:${peakAt}`);
+  else if (peak > g.highIntensityRolling7Warn) warn('VG_ROLLING_HIGH', `${peak} high-intensity days within a 7-day window (from day ${peakAt}) — confirm this is intended.`, `offset:${peakAt}`);
+
+  // Fixed 7-day buckets, used only for the week-over-week ramp check below.
   const byWindow = new Map();
   for (const s of valid) {
     const w = Math.floor(s.offsetDays / 7);
     byWindow.set(w, (byWindow.get(w) || 0) + (HI.has(s.type) ? 1 : 0));
-  }
-  for (const [w, count] of byWindow) {
-    if (count > g.highIntensityPerWeekError) err('VG_WEEKLY_HIGH_CAP', `Week ${w + 1}: ${count} high-intensity (HIGH/RACE) days exceeds the hard cap of ${g.highIntensityPerWeekError}.`, `week:${w}`);
-    else if (count > g.highIntensityPerWeekWarn) warn('VG_WEEKLY_HIGH', `Week ${w + 1}: ${count} high-intensity days (> ${g.highIntensityPerWeekWarn}) — confirm this is intended.`, `week:${w}`);
   }
 
   // Ramp: a jump vs a non-trivial prior week (ignores returning from a 0/deload week).

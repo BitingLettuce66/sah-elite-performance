@@ -10,6 +10,11 @@ describe('scanRedFlags — flags serious signals', () => {
     ['head injury', 'I had a concussion two weeks ago', 'head'],
     ['fracture', 'the doctor said it might be a stress fracture', 'bone'],
     ['RED-S', 'I lost my period and have been restricting calories', 'red_s'],
+    ['suspected tear (popped)', 'my hamstring popped and I went straight down', 'suspected_tear'],
+    ['neuro (dead leg)', 'my leg went dead with tingling to the foot', 'neuro'],
+    ['head (saw stars)', 'I hit the deck and saw stars for a minute', 'head'],
+    ['RED-S (under-fuelling)', "I've been skipping meals and my periods stopped", 'red_s'],
+    ['mental-health crisis', 'some days I want to kill myself', 'mental_health'],
   ])('flags %s', (_label, text, category) => {
     const r = scanRedFlags(text);
     expect(r.flagged).toBe(true);
@@ -42,5 +47,25 @@ describe('scanRedFlags — avoids false positives', () => {
     expect(scanRedFlags('').flagged).toBe(false);
     expect(scanRedFlags(null).flagged).toBe(false);
     expect(scanRedFlags(undefined).flagged).toBe(false);
+  });
+});
+
+describe('scanRedFlags — negation & punctuation', () => {
+  it('does not flag negated symptoms (a clean bill of health)', () => {
+    expect(scanRedFlags('Just normal soreness — to be clear I have no chest pain, no numbness, and no shortness of breath.').flagged).toBe(false);
+  });
+
+  it('does not flag a historical injury stated only with negations', () => {
+    expect(scanRedFlags("No chest pain, no numbness — I'm healthy. Want a 16-week speed block.").flagged).toBe(false);
+  });
+
+  it('still flags a real symptom that appears after a negated one', () => {
+    const r = scanRedFlags('No numbness, but I do get sharp pain on push-off.');
+    expect(r.flagged).toBe(true);
+    expect(r.categories).toContain('acute_pain');
+  });
+
+  it('matches across curly apostrophes', () => {
+    expect(scanRedFlags('I literally can’t walk on it today').flagged).toBe(true);
   });
 });
