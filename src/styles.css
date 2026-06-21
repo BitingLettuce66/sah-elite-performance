@@ -234,6 +234,8 @@ details p{font-size:13.5px;color:var(--text);line-height:1.55;margin:8px 2px 4px
 .backup-actions{display:flex;gap:10px;}
 .backup-actions button{flex:1;padding:12px;border-radius:var(--radius-sm);font-size:14px;font-weight:600;}
 .sheet-note{font-size:14px;color:var(--muted);line-height:1.55;margin:0 0 16px;}
+.sheet-errs{margin:0 0 16px;padding-left:20px;font-size:14px;color:var(--muted);line-height:1.5;}
+.sheet-errs li{margin:0 0 6px;}
 
 /* Welcome-back sheet — stacked actions */
 .wb-actions{display:flex;flex-direction:column;gap:10px;margin-top:8px;}

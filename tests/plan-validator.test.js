@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { validatePlan, formatIssues, toEngineData } from '../src/plan-validator.js';
+import { validatePlan, formatIssues, toEngineData, fromEngineData, loadPlan } from '../src/plan-validator.js';
 import { addDays } from '../src/logic.js';
 
 const seed = JSON.parse(readFileSync(new URL('../public/data/seed.json', import.meta.url)));
@@ -333,5 +333,44 @@ describe('toEngineData — flatten to the engine shape', () => {
   it('returns null for a null/invalid plan', () => {
     expect(toEngineData(null)).toBe(null);
     expect(toEngineData(validatePlan(null).plan)).toBe(null);   // failed validation → plan is null
+  });
+});
+
+describe('fromEngineData / loadPlan — the validated load seam', () => {
+  it('fromEngineData reshapes flat → { template, sessions } and round-trips with toEngineData', () => {
+    const flat = { name: 'P', startDate: '2026-06-15', planVersion: 1, sessions: [{ id: 'a' }] };
+    const c = fromEngineData(flat);
+    expect(c.template.name).toBe('P');
+    expect(c.template.sessions).toBeUndefined();   // sessions are NOT inside template
+    expect(c.sessions).toEqual([{ id: 'a' }]);
+  });
+
+  it('loadPlan validates a FLAT plan and returns engine-ready FLAT data', () => {
+    const r = loadPlan({ name: 'T', startDate: '2026-06-20', sessions: [
+      { offsetDays: 0, type: 'HIGH', phase: 'P1', week: 1, day: 'Mon', sprint: '6x20m' },
+    ] });
+    expect(r.ok, formatIssues(r)).toBe(true);
+    expect(r.data.template).toBeUndefined();        // flat
+    expect(r.data.name).toBe('T');
+    expect(r.data.sessions.length).toBe(1);
+  });
+
+  it('loadPlan rejects a flat plan with structured errors and no data', () => {
+    const r = loadPlan({ sessions: [{ offsetDays: 0, type: 'NOPE', phase: 'P1', week: 1, day: 'Mon', sprint: 'x' }] });
+    expect(r.ok).toBe(false);
+    expect(r.data).toBe(null);
+    expect(r.errors.some(e => e.code === 'TEMPLATE_FIELD_REQUIRED')).toBe(true);  // missing name
+    expect(r.errors.some(e => e.code === 'SESSION_BAD_TYPE')).toBe(true);
+  });
+
+  it('the real bundled seed.json passes the load seam end-to-end', () => {
+    // Integration guard: the actual flat seed must validate and stay engine-shaped,
+    // so booting through loadPlan() renders the same programme.
+    const r = loadPlan(seed);
+    expect(r.ok, formatIssues(r)).toBe(true);
+    expect(r.data.sessions.length).toBe(seed.sessions.length);
+    expect(r.data.template).toBeUndefined();
+    expect(r.data.startDate).toBe(seed.startDate);
+    expect(r.data.name).toBe(seed.name);
   });
 });
