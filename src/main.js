@@ -17,6 +17,8 @@ import { TYPE, NIGGLE, todayISO, round, esc, slug, fmtDate, monthLabel, pill } f
 import { buildBackup, validateBackup, normalizeImported } from './backup.js';
 import { loadPlan } from './plan-validator.js';
 import { calendarCells } from './calendar.js';
+import { generateValidatedPlan, requestCoachPlan, generatePlanLocal, coachConfigured, SPORTS, EQUIPMENT } from './coach.js';
+import { scanRedFlags } from './red-flags.js';
 import { AUTH_ENABLED, sendMagicLink, getUser, signOut, onAuthChange } from './auth.js';
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -149,6 +151,21 @@ function validatedPlanOrRaw(raw, label){
   console.error(`Plan "${label}" failed validation — loading it unvalidated so the app still works.`, r.errors);
   return raw;
 }
+// Install a validated, engine-ready plan as the active programme: swap it in,
+// anchor the assignment to the chosen start date, persist both, re-materialize,
+// render. Shared by file-import and the AI coach. Logged history is kept (keyed by
+// session id).
+async function installPlan(data, startVal){
+  state.data = data;
+  state.assignment = { athleteId:ATHLETE_ID, planId:data.planId, templateId:data.templateId||'default',
+    startDate:startVal, planVersion:data.planVersion||1, status:'active' };
+  try {
+    await putSetting(planKey(), data);
+    await putSetting('assignment:'+ATHLETE_ID, state.assignment);
+  } catch(e){ console.error('Saving plan failed', e); }
+  materializeDates(); render();
+}
+
 // Import a plan JSON: reject (with reasons) anything that fails the validator,
 // otherwise confirm, persist, and swap it in. Logged history is kept (keyed by
 // session id); the start date / assignment is left as-is.
@@ -176,14 +193,7 @@ async function importPlan(file){
   const finish = async () => {
     const startVal = $('#imp-start').value || startDefault;
     closeSheet();
-    state.data = data;
-    state.assignment = { athleteId:ATHLETE_ID, planId:data.planId, templateId:data.templateId||'default',
-      startDate:startVal, planVersion:data.planVersion||1, status:'active' };
-    try {
-      await putSetting(planKey(), data);
-      await putSetting('assignment:'+ATHLETE_ID, state.assignment);
-    } catch(e){ console.error('Saving imported plan failed', e); }
-    materializeDates(); render();
+    await installPlan(data, startVal);
     importNotice('Plan imported', `Loaded ${data.sessions.length} session${data.sessions.length===1?'':'s'}${warnMsg}. Starts ${fmtDate(startVal)}.`);
   };
   openSheet(`<h3>Import plan?</h3>
@@ -192,6 +202,85 @@ async function importPlan(file){
     <div class="sheet-actions"><button class="btn-cancel" id="x-cancel">Cancel</button><button class="btn-save" id="x-go">Import</button></div>`);
   $('#x-cancel').onclick = closeSheet;
   $('#x-go').onclick = finish;
+}
+
+// --- AI coach: intake → red-flag gate → generate→validate loop → preview → install.
+//     The model lives server-side (Supabase Edge Function); when it isn't configured
+//     we fall back to the local generator so the flow still works. ---
+let _lastIntake = null;
+function openCoach(){
+  const sportOpts = SPORTS.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  const equipBoxes = EQUIPMENT.map(e=>`<label class="chk"><input type="checkbox" name="cw-equip" value="${esc(e)}"> ${esc(e)}</label>`).join('');
+  openSheet(`<h3>AI coach</h3>
+    <p class="sheet-note">Tell the coach about you and it'll draft a personalised, periodised plan. Training guidance only — not medical advice.</p>
+    <div class="field"><label for="cw-sport">Sport</label><select id="cw-sport">${sportOpts}</select></div>
+    <div class="field"><label for="cw-goal">Goal</label><input id="cw-goal" type="text" placeholder="e.g. faster 100m by spring" maxlength="200"></div>
+    <div class="field"><label for="cw-weeks">Weeks</label><input id="cw-weeks" type="number" min="1" max="16" value="8"></div>
+    <div class="field"><label for="cw-days">Sessions per week</label><input id="cw-days" type="number" min="1" max="6" value="3"></div>
+    <div class="field"><label>Equipment</label><div class="chk-row">${equipBoxes}</div></div>
+    <div class="field"><label for="cw-start">Start date</label><input id="cw-start" type="date" value="${todayISO()}"></div>
+    <div class="field"><label for="cw-notes">Injuries / how you're feeling</label><textarea id="cw-notes" rows="3" placeholder="Any niggles, recent illness, or how training's been going."></textarea></div>
+    <div class="sheet-actions"><button class="btn-cancel" id="cw-cancel">Cancel</button><button class="btn-save" id="cw-go">Generate plan</button></div>`);
+  $('#cw-cancel').onclick = closeSheet;
+  $('#cw-go').onclick = () => runCoach({
+    sport: $('#cw-sport').value,
+    goal: $('#cw-goal').value,
+    weeks: Number($('#cw-weeks').value),
+    daysPerWeek: Number($('#cw-days').value),
+    equipment: Array.from(document.querySelectorAll('input[name="cw-equip"]:checked')).map(c=>c.value),
+    startDate: $('#cw-start').value || todayISO(),
+    notes: $('#cw-notes').value,
+  });
+}
+async function runCoach(intake){
+  _lastIntake = intake;
+  // Safety gate FIRST — acute red flags short-circuit generation entirely.
+  const flags = scanRedFlags(intake.notes);
+  if(flags.flagged){
+    openSheet(`<h3>Let's pause here</h3>
+      <p class="sheet-note">${esc(flags.advice)}</p>
+      <div class="sheet-actions"><button class="btn-cancel" id="cw-back">Back</button><button class="btn-save" id="cw-ok">OK</button></div>`);
+    $('#cw-ok').onclick = closeSheet; $('#cw-back').onclick = openCoach;
+    return;
+  }
+  const live = coachConfigured();
+  openSheet(`<h3>Coaching…</h3>
+    <p class="sheet-note">${live ? 'Drafting your plan with the AI coach — this can take up to a minute.' : 'Building your plan…'}</p>
+    <div class="sheet-actions"><button class="btn-cancel" id="cw-abort">Cancel</button></div>`);
+  let cancelled = false; $('#cw-abort').onclick = () => { cancelled = true; closeSheet(); };
+  const generate = live ? (i, issues) => requestCoachPlan(i, issues) : (i) => generatePlanLocal(i);
+  let res;
+  try { res = await generateValidatedPlan(intake, { generate }); }
+  catch(e){ res = { ok:false, data:null, errors:[{ message:e.message || 'Generation failed.' }], warnings:[], attempts:0 }; }
+  if(cancelled) return;
+  if(!res.ok){
+    const items = (res.errors||[]).slice(0,8).map(e=>`<li>${esc(e.message)}</li>`).join('');
+    openSheet(`<h3>Couldn't build a safe plan</h3>
+      <p class="sheet-note">The coach's draft didn't pass the safety checks${res.attempts?` after ${res.attempts} attempt${res.attempts===1?'':'s'}`:''}. Try adjusting your inputs:</p>
+      <ul class="sheet-errs">${items}</ul>
+      <div class="sheet-actions"><button class="btn-cancel" id="cw-edit">Edit inputs</button><button class="btn-save" id="cw-retry">Try again</button></div>`);
+    $('#cw-edit').onclick = openCoach;
+    $('#cw-retry').onclick = () => runCoach(_lastIntake);
+    return;
+  }
+  previewCoachPlan(withPlanIdentity(res.data), res.warnings, intake.startDate);
+}
+function previewCoachPlan(data, warnings, startDefault){
+  const start = (data.startDate && /^\d{4}-\d{2}-\d{2}$/.test(data.startDate)) ? data.startDate : (startDefault || todayISO());
+  const high = data.sessions.filter(s=>['HIGH','RACE'].includes(s.type)).length;
+  const warnMsg = warnings && warnings.length ? `<p class="sheet-note">${warnings.length} coaching note${warnings.length===1?'':'s'} flagged — review before you start.</p>` : '';
+  openSheet(`<h3>Your plan is ready</h3>
+    <p class="sheet-note"><b>${esc(data.name||'AI plan')}</b> — ${data.sessions.length} sessions, ${high} high-intensity.</p>
+    ${warnMsg}
+    <div class="field"><label for="cw-pstart">Start date</label><input id="cw-pstart" type="date" value="${start}"></div>
+    <div class="sheet-actions"><button class="btn-cancel" id="cw-discard">Discard</button><button class="btn-save" id="cw-accept">Use this plan</button></div>`);
+  $('#cw-discard').onclick = openCoach;
+  $('#cw-accept').onclick = async () => {
+    const sv = $('#cw-pstart').value || start;
+    closeSheet();
+    await installPlan(data, sv);
+    importNotice('Plan ready', `Loaded ${data.sessions.length} session${data.sessions.length===1?'':'s'}. Starts ${fmtDate(sv)}.`);
+  };
 }
 
 async function boot(){
@@ -594,6 +683,7 @@ function openSettings(){
     <section class="set-group">
       <h4>Plan</h4>
       <p class="set-note">Programme starts <b>${state.assignment?fmtDate(state.assignment.startDate):'—'}</b> · ${state.data.sessions.length} sessions, scheduled relative to that date.</p>
+      <button class="btn-save" id="set-coach">✨ Generate a plan with the AI coach</button>
       <div class="backup-actions">
         <button class="btn-cancel" id="set-plan-start">Change start date</button>
         <button class="btn-cancel" id="set-plan-import">Import plan</button>
@@ -611,6 +701,7 @@ function openSettings(){
     </section>
     <div class="sheet-actions"><button class="btn-save" id="x-done">Done</button></div>`);
   $('#x-done').onclick = closeSheet;
+  $('#set-coach').onclick = openCoach;
   $('#set-plan-start').onclick = openPlanStart;
   const pi=$('#set-plan-import'), pf=$('#set-plan-file');
   if(pi&&pf){ pi.onclick=()=>pf.click(); pf.onchange=()=>{ if(pf.files[0]) importPlan(pf.files[0]); pf.value=''; }; }

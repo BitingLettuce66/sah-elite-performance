@@ -345,4 +345,10 @@ details p{font-size:13.5px;color:var(--text);line-height:1.55;margin:8px 2px 4px
 .sheet-actions{display:flex;gap:10px;margin-top:8px;}
 .sheet-actions button{flex:1;padding:13px;border-radius:11px;font-size:14px;font-weight:600;}
 .btn-save{background:var(--accent);color:var(--accent-ink);border:none;box-shadow:var(--shadow-glow);}
+/* AI-coach intake: equipment checkboxes + the full-width "Generate" entry point */
+.chk-row{display:flex;flex-wrap:wrap;gap:8px;}
+.chk{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text);text-transform:none;letter-spacing:normal;
+  background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:8px 10px;margin:0;}
+.field .chk input{width:auto;padding:0;margin:0;}
+.set-group>.btn-save{width:100%;padding:12px;border-radius:11px;font-size:14px;font-weight:600;margin:0 0 10px;}
 .btn-cancel{background:transparent;color:var(--muted);border:1px solid var(--line);}
