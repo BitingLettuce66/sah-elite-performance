@@ -25,6 +25,13 @@ export const HIGH_INTENSITY_TYPES = ['HIGH', 'RACE'];
 // it's a rest day, the card renders a "Rest" callout.
 export const REST_TYPES = ['RECOVERY'];
 
+// Types that count as adequate recovery the day AFTER a hard (RACE) day — a true
+// rest day (RECOVERY), or a deliberately reduced-load day (DELOAD/TAPER). Wider
+// than REST_TYPES on purpose: the real coach seed plan follows a RACE with a
+// DELOAD (offset 195→196), so a DELOAD/TAPER the day after a race is legitimate
+// recovery, not a violation. Used only by the rest-after-RACE volume guard.
+export const RECOVERY_DAY_TYPES = ['RECOVERY', 'DELOAD', 'TAPER'];
+
 export const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 // Allow-listed session fields — anything else the model emits is DROPPED
@@ -39,8 +46,9 @@ export const PLAN_SOURCES = ['ai', 'coach', 'imported'];
 /* Numeric volume backstops — a hard limit on an over-aggressive plan regardless
    of what the model proposes. Thresholds are calibrated against the real,
    coach-built seed plan (max 4 high-intensity days in any 7-day window, never
-   two high days back-to-back, every RACE followed by a rest day) so a legitimate
-   plan passes cleanly while reckless ones are caught. All tunable per call via
+   two high days back-to-back, every RACE followed by a recovery day, no hard day
+   straight after a DELOAD) so a legitimate plan passes cleanly while reckless
+   ones are caught. All tunable per call via
    validatePlan(plan, { guards: {...} }). */
 export const VOLUME_GUARDS = {
   highIntensityPerWeekWarn: 4,    // > this in a 7-day window → warning
@@ -48,7 +56,8 @@ export const VOLUME_GUARDS = {
   consecutiveHighDaysWarn: 2,     // > this many back-to-back high days → warning
   consecutiveHighDaysError: 3,    // > this → error
   rampWeekOverWeekWarn: 2,        // high-day jump vs a non-trivial prior week → warning
-  enforceRestDayAfterRace: true,  // a RACE may not be immediately followed by a HIGH/RACE day → error
+  enforceRestDayAfterRace: true,  // the day after a RACE must be a recovery day (RECOVERY/DELOAD/TAPER) or empty → error on any other training session
+  enforceRestDayAfterDeload: true,// a DELOAD may not be immediately followed by a hard (HIGH/RACE) day → error
   minSessions: 1,
   maxOffsetDays: 730,             // ~2 years — sanity ceiling on offsetDays
 };

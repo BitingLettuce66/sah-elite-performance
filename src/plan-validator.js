@@ -9,7 +9,7 @@
    Reference: ../Venture-Planning/ai-coach-design.md §5–6, §11 step 1. */
 
 import {
-  KNOWN_TYPES, HIGH_INTENSITY_TYPES, REST_TYPES, DAYS,
+  KNOWN_TYPES, HIGH_INTENSITY_TYPES, REST_TYPES, RECOVERY_DAY_TYPES, DAYS,
   SESSION_FIELDS, TEMPLATE_FIELDS, REQUIRED_TEMPLATE_FIELDS, PLAN_SOURCES, VOLUME_GUARDS,
 } from './plan-schema.js';
 
@@ -17,6 +17,7 @@ const isInt = n => typeof n === 'number' && Number.isInteger(n);
 const isNonEmptyStr = s => typeof s === 'string' && s.trim().length > 0;
 const HI = new Set(HIGH_INTENSITY_TYPES);
 const REST = new Set(REST_TYPES);
+const RECOVERY_DAY = new Set(RECOVERY_DAY_TYPES);
 
 /* Derive a stable, human-readable id from a session — e.g. phase "P1 Accel",
    week 1, day "Mon" → "P1-W1-Mon" (matches the seed scheme). Used only when a
@@ -157,13 +158,25 @@ function runVolumeGuards(sessions, g, err, warn) {
   if (maxRun > g.consecutiveHighDaysError) err('VG_CONSECUTIVE_HIGH', `${maxRun} consecutive high-intensity days exceeds the hard cap of ${g.consecutiveHighDaysError}.`, 'sessions');
   else if (maxRun > g.consecutiveHighDaysWarn) warn('VG_CONSECUTIVE_HIGH', `${maxRun} consecutive high-intensity days (> ${g.consecutiveHighDaysWarn}) — confirm recovery is adequate.`, 'sessions');
 
-  // A RACE must be followed by a recovery day, not another high day.
-  if (g.enforceRestDayAfterRace) {
+  // Rest after a hard day (ai-coach-design §5 rule 4). Build the day→types index
+  // once and apply both rules:
+  //   • RACE → the next day must be a recovery day (RECOVERY/DELOAD/TAPER) or empty.
+  //     Any other training session there (HIGH/RACE/MOD/LOW) is an error. DELOAD/
+  //     TAPER count as recovery here on purpose — the seed follows a race with a
+  //     deload (offset 195→196), which is legitimate.
+  //   • DELOAD → the next day must not be a hard (HIGH/RACE) day. Looser than the
+  //     RACE rule by design: the seed routinely follows a deload with an easy LOW
+  //     day (e.g. 14→15), so only a hard day straight after a deload is rejected.
+  if (g.enforceRestDayAfterRace || g.enforceRestDayAfterDeload) {
     const byOff = new Map();
     for (const s of valid) { const a = byOff.get(s.offsetDays) || []; a.push(s.type); byOff.set(s.offsetDays, a); }
     for (const s of valid) {
-      if (s.type === 'RACE' && (byOff.get(s.offsetDays + 1) || []).some(ty => HI.has(ty))) {
-        err('VG_NO_REST_AFTER_RACE', `RACE on day ${s.offsetDays} is immediately followed by a high-intensity day; insert a recovery day.`, `offset:${s.offsetDays}`);
+      const next = byOff.get(s.offsetDays + 1) || [];
+      if (g.enforceRestDayAfterRace && s.type === 'RACE' && next.some(ty => !RECOVERY_DAY.has(ty))) {
+        err('VG_NO_REST_AFTER_RACE', `RACE on day ${s.offsetDays} must be followed by a recovery day (${RECOVERY_DAY_TYPES.join('/')}) or rest; day ${s.offsetDays + 1} has a training session (${next.join(', ')}).`, `offset:${s.offsetDays}`);
+      }
+      if (g.enforceRestDayAfterDeload && s.type === 'DELOAD' && next.some(ty => HI.has(ty))) {
+        err('VG_NO_REST_AFTER_DELOAD', `DELOAD on day ${s.offsetDays} is immediately followed by a hard (${HIGH_INTENSITY_TYPES.join('/')}) day; insert an easier day first.`, `offset:${s.offsetDays}`);
       }
     }
   }

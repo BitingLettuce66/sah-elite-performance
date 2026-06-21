@@ -149,3 +149,61 @@ describe('validatePlan — volume guards', () => {
     expect(s).toHaveProperty('evil', 'keep');
   });
 });
+
+// Rest-after-hard-day rules (ai-coach-design §5 rule 4). A RACE must be followed
+// by a true recovery day (RECOVERY/DELOAD/TAPER) or rest; a DELOAD must not be
+// spiked straight back into a hard (HIGH/RACE) day. Recovery-class days
+// (DELOAD/TAPER) count as rest after a RACE so the real coach seed plan — which
+// follows a race with a deload, and deloads with easy days — still validates.
+describe('validatePlan — rest after a hard day', () => {
+  const race = over => session({ id: 'race', type: 'RACE', day: 'Sat', offsetDays: 0, sprint: 'Race 100m', ...over });
+  const deload = over => session({ id: 'dl', type: 'DELOAD', day: 'Mon', offsetDays: 0, sprint: 'Technical, low volume', ...over });
+  const after = over => session({ id: 'next', day: 'Sun', offsetDays: 1, sprint: 'work', ...over });
+
+  it('rejects a RACE followed by a MOD day (previously accepted)', () => {
+    const r = validatePlan(plan([race(), after({ type: 'MOD' })]));
+    expect(r.ok).toBe(false);
+    expect(r.errors.some(e => e.code === 'VG_NO_REST_AFTER_RACE')).toBe(true);
+  });
+
+  it('rejects a RACE followed by a LOW day (no easy session the day after a race)', () => {
+    const r = validatePlan(plan([race(), after({ type: 'LOW' })]));
+    expect(r.ok).toBe(false);
+    expect(r.errors.some(e => e.code === 'VG_NO_REST_AFTER_RACE')).toBe(true);
+  });
+
+  it('still rejects a RACE followed by a HIGH day (control)', () => {
+    const r = validatePlan(plan([race(), after({ type: 'HIGH', sprint: 'max effort' })]));
+    expect(r.ok).toBe(false);
+    expect(r.errors.some(e => e.code === 'VG_NO_REST_AFTER_RACE')).toBe(true);
+  });
+
+  it('accepts a RACE followed by a DELOAD day (seed-style: offset 195→196)', () => {
+    const r = validatePlan(plan([race(), after({ type: 'DELOAD' })]));
+    expect(r.errors, formatIssues(r)).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  it('accepts a RACE followed by a RECOVERY day or by nothing', () => {
+    expect(validatePlan(plan([race(), after({ type: 'RECOVERY', sprint: '' })])).ok).toBe(true);
+    expect(validatePlan(plan([race()])).ok).toBe(true); // next day empty = rest
+  });
+
+  it('rejects a DELOAD followed by a HIGH day (previously accepted)', () => {
+    const r = validatePlan(plan([deload(), after({ type: 'HIGH', day: 'Tue', sprint: 'max effort' })]));
+    expect(r.ok).toBe(false);
+    expect(r.errors.some(e => e.code === 'VG_NO_REST_AFTER_DELOAD')).toBe(true);
+  });
+
+  it('accepts a DELOAD followed by an easy LOW day (seed-style: offset 14→15)', () => {
+    const r = validatePlan(plan([deload(), after({ type: 'LOW', day: 'Tue' })]));
+    expect(r.errors, formatIssues(r)).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  it('lets the DELOAD-rest guard be turned off per call', () => {
+    const r = validatePlan(plan([deload(), after({ type: 'HIGH', day: 'Tue', sprint: 'max effort' })]), { guards: { enforceRestDayAfterDeload: false } });
+    expect(r.errors.some(e => e.code === 'VG_NO_REST_AFTER_DELOAD')).toBe(false);
+    expect(r.ok).toBe(true);
+  });
+});
