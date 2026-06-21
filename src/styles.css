@@ -163,10 +163,16 @@ details p{font-size:13.5px;color:var(--text);line-height:1.55;margin:8px 2px 4px
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;}
 .cal-head{margin-bottom:6px;}
 .cal-dow{text-align:center;font-size:10.5px;letter-spacing:.04em;color:var(--muted);padding:2px 0;}
-.cal-cell{position:relative;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+/* min-width:0 is load-bearing: 1fr columns are minmax(auto,1fr), and the cell's
+   aspect-ratio:1 injects an automatic minimum that otherwise blows the 7 columns
+   out past the container on some months (e.g. July) — overflowing the screen.
+   min-width:0 lets each column resolve to container/7 consistently.
+   NOTE: day 1 is placed with grid-column-start (see viewHistoryCalendar) — never
+   use empty filler cells: empty grid items inherit aspect-ratio:1 and inflate
+   the first row. Covered by tests/calendar-grid.test.js. */
+.cal-cell{position:relative;aspect-ratio:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
   background:transparent;border:1px solid transparent;border-radius:10px;color:var(--muted);padding:0;}
 .cal-cell.has{background:var(--surface);border-color:var(--line);color:var(--text);}
-.cal-cell.empty{background:transparent;border:none;}
 .cal-cell.today{border-color:var(--accent);background:rgba(143,203,232,.10);}
 .cal-num{font-size:13px;line-height:1;}
 .cal-cell.today .cal-num{color:var(--accent);font-weight:700;}
