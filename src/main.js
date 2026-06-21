@@ -168,15 +168,26 @@ async function importPlan(file){
   }
   const data = withPlanIdentity(r.data);
   const warnMsg = r.warnings.length ? ` (${r.warnings.length} warning${r.warnings.length===1?'':'s'})` : '';
+  // Anchor the new programme to a chosen start date — default to the plan's own
+  // startDate (validated already) or today. Without this, sessions are scheduled
+  // off the OLD assignment date and a fresh plan can land entirely in the past.
+  const startDefault = data.startDate || todayISO();
   const finish = async () => {
+    const startVal = $('#imp-start').value || startDefault;
     closeSheet();
     state.data = data;
-    try { await putSetting(planKey(), data); } catch(e){ console.error('Saving imported plan failed', e); }
+    state.assignment = { athleteId:ATHLETE_ID, planId:data.planId, templateId:data.templateId||'default',
+      startDate:startVal, planVersion:data.planVersion||1, status:'active' };
+    try {
+      await putSetting(planKey(), data);
+      await putSetting('assignment:'+ATHLETE_ID, state.assignment);
+    } catch(e){ console.error('Saving imported plan failed', e); }
     materializeDates(); render();
-    importNotice('Plan imported', `Loaded ${data.sessions.length} session${data.sessions.length===1?'':'s'}${warnMsg}.`);
+    importNotice('Plan imported', `Loaded ${data.sessions.length} session${data.sessions.length===1?'':'s'}${warnMsg}. Starts ${fmtDate(startVal)}.`);
   };
   openSheet(`<h3>Import plan?</h3>
-    <p class="sheet-note">This replaces your current programme with <b>${esc(data.name||'an imported plan')}</b> — ${data.sessions.length} session${data.sessions.length===1?'':'s'}. Your logged history is kept (matched by session id), and your start date is unchanged.</p>
+    <p class="sheet-note">This replaces your current programme with <b>${esc(data.name||'an imported plan')}</b> — ${data.sessions.length} session${data.sessions.length===1?'':'s'}. Your logged history is kept (matched by session id).</p>
+    <div class="field"><label for="imp-start">Start date</label><input id="imp-start" type="date" value="${startDefault}"></div>
     <div class="sheet-actions"><button class="btn-cancel" id="x-cancel">Cancel</button><button class="btn-save" id="x-go">Import</button></div>`);
   $('#x-cancel').onclick = closeSheet;
   $('#x-go').onclick = finish;
