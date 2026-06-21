@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { validatePlan, formatIssues } from '../src/plan-validator.js';
+import { validatePlan, formatIssues, toEngineData } from '../src/plan-validator.js';
+import { addDays } from '../src/logic.js';
 
 const seed = JSON.parse(readFileSync(new URL('../public/data/seed.json', import.meta.url)));
 
@@ -51,6 +52,22 @@ describe('validatePlan — structure', () => {
   it('rejects empty / non-array sessions', () => {
     expect(validatePlan(plan([])).errors.some(e => e.code === 'SESSIONS_EMPTY')).toBe(true);
     expect(validatePlan({ template: { name: 'x' }, sessions: 'nope' }).errors.some(e => e.code === 'SESSIONS_NOT_ARRAY')).toBe(true);
+  });
+
+  it('does NOT require startDate (the template is date-agnostic)', () => {
+    // An assignment binds the plan to a start date later (main.js), so a template
+    // with no startDate is valid — it must not be forced to carry one.
+    const r = validatePlan(plan([session()], { name: 'T' }));
+    expect(r.ok, formatIssues(r)).toBe(true);
+    expect(r.errors.some(e => e.code === 'TEMPLATE_BAD_START_DATE')).toBe(false);
+  });
+
+  it('accepts a valid startDate but rejects a malformed or impossible one', () => {
+    expect(validatePlan(plan([session()], { name: 'T', startDate: '2026-06-15' })).ok).toBe(true);
+    expect(validatePlan(plan([session()], { name: 'T', startDate: 'next monday' }))
+      .errors.some(e => e.code === 'TEMPLATE_BAD_START_DATE')).toBe(true);
+    expect(validatePlan(plan([session()], { name: 'T', startDate: '2026-02-30' }))
+      .errors.some(e => e.code === 'TEMPLATE_BAD_START_DATE')).toBe(true);
   });
 });
 
@@ -209,6 +226,31 @@ describe('validatePlan — content safety & bounds', () => {
     expect(validatePlan(plan([session({ sprint: 'x'.repeat(3000) })])).errors.some(e => e.code === 'SESSION_TEXT_TOO_LONG')).toBe(true);
     expect(validatePlan(plan([session({ id: 'A'.repeat(80) })])).errors.some(e => e.code === 'SESSION_ID_TOO_LONG')).toBe(true);
   });
+
+  it('rejects a double-quote in a prescription field (attribute-injection breakout)', () => {
+    // The renderer drops this text into a double-quoted HTML attribute and does
+    // not escape "; a quote would break out and inject an event handler.
+    const r = validatePlan(plan([session({ focus: 'speed" onmouseover="alert(document.cookie)' })]));
+    expect(r.ok, formatIssues(r)).toBe(false);
+    expect(r.errors.some(e => e.code === 'SESSION_UNSAFE_TEXT')).toBe(true);
+  });
+
+  it('drops an unsafe provided id and derives a safe one (renders unescaped into data-id)', () => {
+    const r = validatePlan(plan([session({ id: 'x" onclick="alert(1)', phase: 'P1 Accel', week: 1, day: 'Mon' })]));
+    expect(r.ok, formatIssues(r)).toBe(true);                       // plan stays valid
+    expect(r.warnings.some(w => w.code === 'SESSION_ID_UNSAFE')).toBe(true);
+    expect(r.plan.sessions[0].id).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+    expect(r.plan.sessions[0].id).not.toContain('"');
+  });
+
+  it('cannot carry unsafe chars from a tainted phase into a derived id', () => {
+    // No id provided, so the id is derived from phase/week/day; a hostile phase
+    // must not taint it.
+    const r = validatePlan(plan([session({ id: undefined, phase: 'P1" onclick="x', week: 1, day: 'Mon' })]));
+    expect(r.ok, formatIssues(r)).toBe(true);
+    expect(r.plan.sessions[0].id).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+    expect(r.plan.sessions[0].id).not.toContain('"');
+  });
 });
 
 // Rest-after-hard-day rules (ai-coach-design §5 rule 4). A RACE must be followed
@@ -266,5 +308,30 @@ describe('validatePlan — rest after a hard day', () => {
     const r = validatePlan(plan([deload(), after({ type: 'HIGH', day: 'Tue', sprint: 'max effort' })]), { guards: { enforceRestDayAfterDeload: false } });
     expect(r.errors.some(e => e.code === 'VG_NO_REST_AFTER_DELOAD')).toBe(false);
     expect(r.ok).toBe(true);
+  });
+});
+
+describe('toEngineData — flatten to the engine shape', () => {
+  it('spreads header fields to the root and keeps sessions (no template wrapper)', () => {
+    const r = validatePlan(seedAsPlan());
+    const data = toEngineData(r.plan);
+    expect(data.template).toBeUndefined();             // flat, like seed.json / state.data
+    expect(Array.isArray(data.sessions)).toBe(true);
+    expect(data.sessions.length).toBe(seed.sessions.length);
+    expect(data.name).toBe(r.plan.template.name);      // header fields live at the root
+    expect(data.planVersion).toBe(r.plan.template.planVersion);
+  });
+
+  it('carries startDate to the root when present, so the engine can materialize dates', () => {
+    const r = validatePlan(plan([session({ offsetDays: 3 })], { name: 'T', startDate: '2026-06-15' }));
+    const data = toEngineData(r.plan);
+    expect(data.startDate).toBe('2026-06-15');
+    // Mirrors main.js materializeDates(): addDays(startDate, offsetDays).
+    expect(addDays(data.startDate, data.sessions[0].offsetDays)).toBe('2026-06-18');
+  });
+
+  it('returns null for a null/invalid plan', () => {
+    expect(toEngineData(null)).toBe(null);
+    expect(toEngineData(validatePlan(null).plan)).toBe(null);   // failed validation → plan is null
   });
 });
