@@ -431,7 +431,9 @@ function openWelcome(){
     <p class="sheet-note">This is your training log — pre-loaded with your full programme. It works completely offline, and everything stays on this device.</p>
     <p class="sheet-note">Your programme starts on the date below. Change it if you'd like a different start day — you can always adjust it later in Settings.</p>
     <div class="field"><label>Start date</label><input id="ob-start" type="date" value="${cur}"></div>
-    <div class="sheet-actions"><button class="btn-save" id="ob-go">Start training</button></div>`);
+    <div class="sheet-actions"><button class="btn-save" id="ob-go">Start training</button></div>`,
+    // Mark onboarding complete however the welcome is dismissed, so it never re-shows.
+    { onClose: () => { putSetting(ONBOARDED_KEY(), true).catch(()=>{}); } });
   $('#ob-go').onclick = async () => {
     const v = $('#ob-start').value;
     if(v && v!==cur){ state.assignment = { ...state.assignment, startDate:v };
@@ -710,9 +712,11 @@ function openLog(id){
   rowsEl.onclick = e => { if(e.target.classList.contains('sr-del')) e.target.closest('.sprint-row').remove(); };
   const collectSprints = () => Array.from(rowsEl.querySelectorAll('.sprint-row')).map(row=>{
     const dist=row.querySelector('.sr-dist').value; const t=row.querySelector('.sr-time').value.trim();
-    return t==='' ? null : { dist, time:round(Number(t),2) };
+    const n = Number(t);
+    return (t==='' || !Number.isFinite(n)) ? null : { dist, time:round(n,2) };
   }).filter(Boolean);
-  const num = sel => { const v=$(sel).value.trim(); return v===''?null:round(Number(v),2); };
+  // Guard against non-numeric entries (e.g. a stray letter) becoming NaN in the log.
+  const num = sel => { const v=$(sel).value.trim(); const n=Number(v); return (v==='' || !Number.isFinite(n)) ? null : round(n,2); };
   $('#x-save').onclick=()=>{ setLog(id,{done:picks.done===1,rpe:picks.rpe,sleep:picks.sleep,readiness:picks.readiness,
       niggle:$('#f-niggle').value,
       squatKg:num('#f-squat'),hipThrustKg:num('#f-hip'),sprints:collectSprints(),
@@ -730,8 +734,9 @@ function focusablesIn(el){
   return [...el.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])')]
     .filter(n => !n.disabled && n.offsetParent !== null);
 }
-function openSheet(html){
+function openSheet(html, opts = {}){
   _lastFocus = document.activeElement;       // remember what to return focus to
+  state._sheetOnClose = opts.onClose || null;   // runs on ANY dismiss (backdrop / Escape / button)
   const sheet = $('#sheet'); sheet.innerHTML = html;
   // a11y: name the dialog by its heading, and link each field label to its control.
   const heading = sheet.querySelector('h3');
@@ -758,6 +763,8 @@ function closeSheet(){
   $('#modal').classList.add('hidden');
   if(_sheetKeys){ document.removeEventListener('keydown', _sheetKeys); _sheetKeys = null; }
   if(state._syncStatusOff){ state._syncStatusOff(); state._syncStatusOff = null; }  // stop live sync-status updates
+  const onClose = state._sheetOnClose; state._sheetOnClose = null;
+  if(onClose){ try{ onClose(); }catch(e){} }
   if(_lastFocus && _lastFocus.focus){ try{ _lastFocus.focus(); }catch(e){} }
   _lastFocus = null;
 }

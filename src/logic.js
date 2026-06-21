@@ -19,11 +19,19 @@ export function findToday(sessions, today){
   return sessions.find(s => s.date === today) || sortByDate(sessions).find(s => s.date >= today) || null;
 }
 
-// Consecutive completed sessions counting back from today (inclusive).
-export function computeStreak(sessions, logs, today){
+// Rest sessions (RECOVERY) are streak-neutral — they neither extend nor break
+// the chain, so the weekly rest day doesn't reset an athlete's streak.
+const isRestSession = s => !!s && s.type === 'RECOVERY';
+
+// Consecutive completed TRAINING sessions counting back from today (inclusive).
+// Rest days are skipped; the count breaks only on a missed training session.
+export function computeStreak(sessions, logs, today, isRest = isRestSession){
   const past = sortByDate(sessions).filter(s => s.date <= today).reverse();
   let n = 0;
-  for (const s of past){ if (logs[s.id] && logs[s.id].done) n++; else break; }
+  for (const s of past){
+    if (isRest(s)) continue;
+    if (logs[s.id] && logs[s.id].done) n++; else break;
+  }
   return n;
 }
 
