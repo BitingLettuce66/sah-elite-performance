@@ -4,7 +4,8 @@
 
 // Session-type pills (label + CSS class).
 export const TYPE = {
-  HIGH:{label:'HIGH',cls:'t-high'}, DELOAD:{label:'DELOAD',cls:'t-deload'},
+  HIGH:{label:'HIGH',cls:'t-high'}, MOD:{label:'MOD',cls:'t-mod'},
+  DELOAD:{label:'DELOAD',cls:'t-deload'},
   TAPER:{label:'TAPER',cls:'t-taper'}, LOW:{label:'LOW',cls:'t-low'},
   RECOVERY:{label:'REST',cls:'t-rest'}, RACE:{label:'RACE',cls:'t-race'}
 };
