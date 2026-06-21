@@ -247,7 +247,7 @@ const sorted = () => sortByDate(state.data.sessions);
 function findToday(){ return findTodaySession(state.data.sessions, todayISO()); }
 function byId(id){ return state.data.sessions.find(x=>x.id===id); }
 
-function card(se){
+function card(se, opts={}){
   const lg = getLog(se.id)||{};
   const done = lg.done ? '<span class="done">✓ Logged</span>' : '';
   const body = se.type==='RECOVERY'
@@ -259,14 +259,26 @@ function card(se){
     <details><summary>Cool-down</summary><p>${esc(se.cooldown)}</p></details>` : '';
   const rules = (state.data && state.data.rules && state.data.rules.length)
     ? `<details class="rules-tog"><summary>Session rules &amp; cues</summary><ul>${state.data.rules.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>` : '';
+  const actions = lg.done
+    ? `<button class="btn-log" data-id="${se.id}">Edit log</button>`
+    : `<div class="card-actions"><button class="btn-done" data-id="${se.id}">✓ Mark done</button><button class="btn-log alt" data-id="${se.id}">Details</button></div>`;
+  // Today hero: eyebrow → big display title → live-dot meta → week dots, then the usual body.
+  if(opts.hero){
+    return `<article class="card card-hero">
+      <div class="hero-head"><p class="hero-eyebrow">${esc(se.day)} · Today</p>${done}</div>
+      <h2 class="card-title hero-title">${esc(se.focus)}</h2>
+      <div class="hero-meta">${lg.done?'':'<span class="live-dot"></span>'}${pill(se.type)}<span class="hero-sub">${fmtDate(se.date)} · ${esc(se.surface)}</span></div>
+      ${weekStrip(se, true)}
+      ${body}${tog}${rules}
+      ${actions}
+    </article>`;
+  }
   return `<article class="card">
     <div class="card-top">${pill(se.type)}<span>${esc(se.phase)} · Wk ${se.week} · ${se.day}</span>${done}</div>
     <h2 class="card-title">${esc(se.focus)}</h2>
     <div class="meta">${fmtDate(se.date)} · ${esc(se.surface)}</div>
     ${body}${tog}${rules}
-    ${lg.done
-      ? `<button class="btn-log" data-id="${se.id}">Edit log</button>`
-      : `<div class="card-actions"><button class="btn-done" data-id="${se.id}">✓ Mark done</button><button class="btn-log alt" data-id="${se.id}">Details</button></div>`}
+    ${actions}
   </article>`;
 }
 
@@ -274,13 +286,13 @@ function card(se){
 function weekSessions(se){ return sorted().filter(s=>s.phase===se.phase && s.week===se.week); }
 // Next session strictly after today (for the "up next" line).
 function nextAfter(){ const t=todayISO(); return sorted().find(s=>s.date>t) || null; }
-function weekStrip(se){
+function weekStrip(se, hero){
   const t=todayISO();
   const cells = weekSessions(se).map(s=>{ const lg=getLog(s.id)||{}; const d=statusDot(s,lg);
     return `<button class="wk-cell ${d.cls}${s.date===t?' today':''}" data-id="${s.id}">
       <span class="wk-day">${s.day}</span><span class="wk-dot">${d.char}</span></button>`;
   }).join('');
-  return `<div class="week-strip">${cells}</div>`;
+  return `<div class="week-strip${hero?' wk-dots':''}">${cells}</div>`;
 }
 function viewToday(){
   const se = findToday();
@@ -290,7 +302,9 @@ function viewToday(){
   const nextHtml = next ? `<button class="nextup" data-id="${next.id}">
       <span class="nextup-label">Up next</span>
       <span class="nextup-body">${pill(next.type)}<span class="nextup-focus">${esc(next.focus)}</span><span class="nextup-date">${fmtDate(next.date)}</span></span></button>` : '';
-  return `<p class="eyebrow">${isToday?'Today':'Next up'}</p>${weekStrip(se)}${card(se)}${nextHtml}`;
+  // Today opens to a calm hero (week strip lives inside it); upcoming sessions keep the plain layout.
+  if(isToday) return `${card(se,{hero:true})}${nextHtml}`;
+  return `<p class="eyebrow">Next up</p>${weekStrip(se)}${card(se)}`;
 }
 // Tappable status dot: done ✓ / missed (past, not done) / upcoming.
 function statusDot(se, lg){

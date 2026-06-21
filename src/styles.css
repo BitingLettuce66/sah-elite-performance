@@ -210,6 +210,22 @@ details p{font-size:13.5px;color:var(--text);line-height:1.55;margin:8px 2px 4px
 .nextup-focus{font-weight:600;}
 .nextup-date{color:var(--muted);font-size:12.5px;}
 
+/* Today hero — a calm opening moment: eyebrow → big display title → live meta → week dots */
+.card-hero{border-radius:var(--radius-lg);padding:22px 20px 20px;}
+.hero-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px;}
+.hero-eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin:0;}
+.hero-head .done{margin-left:0;}
+.hero-title{font-size:30px;line-height:1.1;letter-spacing:-.02em;margin:8px 0 12px;}
+.hero-meta{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:13px;color:var(--muted);}
+.hero-meta .hero-sub{letter-spacing:.02em;}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none;box-shadow:0 0 0 4px var(--accent-glow);}
+/* Week strip rendered as subtle marks inside the hero (vs the bordered boxes elsewhere) */
+.week-strip.wk-dots{margin:18px 0 6px;gap:7px;}
+.wk-dots .wk-cell{background:transparent;border:none;border-radius:9px;padding:7px 0;gap:7px;}
+.wk-dots .wk-cell.today{background:rgba(143,203,232,.10);}
+.wk-dots .wk-dot{font-size:13px;}
+.card-hero .callout:first-of-type{margin-top:16px;}
+
 /* Today — one-tap done + details */
 .card-actions{display:flex;gap:10px;margin-top:14px;}
 .btn-done{flex:1.4;padding:13px;border-radius:var(--radius-sm);border:none;background:var(--accent);
