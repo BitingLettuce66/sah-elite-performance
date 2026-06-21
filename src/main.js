@@ -16,6 +16,7 @@ import { addDays, sortByDate, findToday as findTodaySession, computeStreak, stat
 import { TYPE, NIGGLE, todayISO, round, esc, slug, fmtDate, monthLabel, pill } from './format.js';
 import { buildBackup, validateBackup, normalizeImported } from './backup.js';
 import { loadPlan } from './plan-validator.js';
+import { calendarCells } from './calendar.js';
 import { AUTH_ENABLED, sendMagicLink, getUser, signOut, onAuthChange } from './auth.js';
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -343,27 +344,11 @@ function viewHistoryList(){
 const calMonth = () => state.histMonth || todayISO().slice(0,7);
 function shiftMonth(ym, delta){ const [y,m]=ym.split('-').map(Number); const d=new Date(y, m-1+delta, 1);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
-// Map each session to its (computed) date for O(1) calendar lookup.
-function sessionsByDate(){ const m={}; for(const s of state.data.sessions) m[s.date]=s; return m; }
 function viewHistoryCalendar(){
   const ym = calMonth(); const [y,m] = ym.split('-').map(Number);
   const t = todayISO();
-  const byDate = sessionsByDate();
-  const startWeekday = (new Date(y, m-1, 1).getDay()+6)%7;   // 0=Mon … 6=Sun
-  const daysInMonth = new Date(y, m, 0).getDate();
   const dow = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<span class="cal-dow">${d}</span>`).join('');
-  let cells = '';
-  for(let i=0;i<startWeekday;i++) cells += `<span class="cal-cell empty"></span>`;
-  for(let d=1; d<=daysInMonth; d++){
-    const iso = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const se = byDate[iso];
-    const isToday = iso===t ? ' today' : '';
-    if(!se){ cells += `<span class="cal-cell${isToday}"><span class="cal-num">${d}</span></span>`; continue; }
-    const st = statusOf(se, getLog(se.id)||{}, t);   // done | missed | future
-    const stWord = st==='done' ? 'done' : st==='missed' ? 'missed' : 'upcoming';   // status in words, not colour alone
-    cells += `<button class="cal-cell has ${st}${isToday}" data-id="${se.id}" aria-label="${fmtDate(iso)} — ${esc(se.focus)} — ${stWord}">
-      <span class="cal-num">${d}</span><span class="cal-dot ${st}" aria-hidden="true"></span></button>`;
-  }
+  const { cells } = calendarCells({ year:y, month:m, today:t, sessions:state.data.sessions, logs:state.logs });
   const label = new Date(y, m-1, 1).toLocaleDateString('en-AU',{month:'long',year:'numeric'});
   return `${historyHead('calendar')}
     <div class="cal-nav">
