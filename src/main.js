@@ -22,16 +22,33 @@ const $ = (s, el = document) => el.querySelector(s);
 // Lightweight toast (used for the PWA update prompt + offline-ready notice).
 function showToast(msg, actionLabel, onAction, autoHide){
   let el = $('#toast');
-  if(!el){ el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el); }
-  el.innerHTML = `<span>${msg}</span>` + (actionLabel ? `<button id="toast-act">${actionLabel}</button>` : '');
+  if(!el){ el = document.createElement('div'); el.id = 'toast'; el.setAttribute('role','status'); el.setAttribute('aria-live','polite'); document.body.appendChild(el); }
+  el.innerHTML = `<span>${esc(msg)}</span>` + (actionLabel ? `<button id="toast-act">${esc(actionLabel)}</button>` : '');
   el.classList.add('show');
   if(actionLabel && onAction) $('#toast-act').onclick = onAction;
   if(autoHide) setTimeout(()=>el.classList.remove('show'), autoHide);
+}
+// Announce a transient confirmation to screen readers via the polite live region
+// (visual users get the existing UI feedback). Clearing first re-announces repeats.
+function announce(msg){
+  const el = $('#sr-status'); if(!el) return;
+  el.textContent = ''; requestAnimationFrame(() => { el.textContent = msg; });
+}
+// Surface a persistence failure instead of swallowing it to the console — a write
+// that didn't save otherwise looks identical to one that did.
+function notePersistError(e){
+  console.error('Save failed', e);
+  showToast('Couldn’t save your last change — it may not be stored.', null, null, 5000);
 }
 // Prompt to refresh when a new version is deployed (instead of a silent reload).
 const updateSW = registerSW({
   onNeedRefresh(){ showToast('New version available', 'Refresh', ()=>updateSW(true)); },
   onOfflineReady(){ showToast('Ready to use offline', null, null, 2600); },
+  onRegisteredSW(swUrl, r){
+    // Installed PWAs can stay open for days — poll hourly for a new deploy so a
+    // user isn't stranded on a stale version (the toast above prompts the refresh).
+    if(r) setInterval(() => r.update().catch(()=>{}), 60 * 60 * 1000);
+  },
 });
 // state.logs is an in-memory cache of all logs, loaded once from IndexedDB on
 // boot so render code can read them synchronously.
@@ -73,17 +90,17 @@ function setLog(id, v) {
     if (se) log.prescribedSnapshot = snapshotOf(se);
   }
   state.logs[id] = log;
-  putLog(log).catch(e => console.error('Log save failed', e));
+  putLog(log).catch(notePersistError);
 }
 // Remove a log from the cache and IndexedDB.
 function delLog(id){
   delete state.logs[id];
-  deleteLog(id).catch(e => console.error('Log delete failed', e));
+  deleteLog(id).catch(notePersistError);
 }
 // One-tap completion: mark done without opening the full sheet.
-function quickDone(id){ const se=byId(id); setLog(id, { done:true, date: se?se.date:todayISO() }); render(); }
+function quickDone(id){ const se=byId(id); setLog(id, { done:true, date: se?se.date:todayISO() }); announce('Session marked done'); render(); }
 // Toggle a session's done state from a History row (keeps other log fields).
-function toggleDone(id){ const lg=getLog(id)||{}; const se=byId(id); setLog(id, { done:!lg.done, date: se?se.date:todayISO() }); render(); }
+function toggleDone(id){ const lg=getLog(id)||{}; const se=byId(id); const nowDone=!lg.done; setLog(id, { done:nowDone, date: se?se.date:todayISO() }); announce(nowDone?'Session marked done':'Session marked not done'); render(); }
 
 // --- Backup: export/import logs as JSON (local data can be cleared by iOS) ---
 // Pure serialise/validate/normalise live in backup.js; here we wire them to
@@ -248,7 +265,7 @@ function viewHistoryList(){
     const isToday = se.date===t ? ' is-today' : '';
     return `${head}<div class="row${isToday}">
       <button class="row-main" data-id="${se.id}"><span class="row-date">${fmtDate(se.date)}</span>${pill(sv.type)}<span class="row-focus">${esc(sv.focus)}</span></button>
-      <button class="row-dot ${d.cls}" data-done="${se.id}" aria-label="toggle done">${d.char}</button>
+      <button class="row-dot ${d.cls}" data-done="${se.id}" aria-label="${esc(sv.focus)}, ${fmtDate(se.date)} — ${d.cls==='done'?'done':'not done'}; toggle">${d.char}</button>
     </div>`;
   }).join('');
   return `${historyHead('list')}<div class="list">${rows}</div>`;
@@ -366,7 +383,7 @@ function openBodyweight(){
   $('#x-save').onclick=async ()=>{ const date=$('#bw-date').value; const kg=round(Number($('#bw-kg').value),2);
     if(date && kg){ const arr=(state.bodyweight||[]).filter(e=>e.date!==date); arr.push({date,kg});
       arr.sort((a,b)=>a.date.localeCompare(b.date)); state.bodyweight=arr;
-      try{ await putSetting('bw:'+ATHLETE_ID, arr); }catch(e){ console.error('Saving bodyweight failed', e); } }
+      try{ await putSetting('bw:'+ATHLETE_ID, arr); }catch(e){ notePersistError(e); } }
     closeSheet(); render(); };
 }
 // Per-distance season target times (optional), persisted via db.js.
@@ -378,7 +395,7 @@ function openTargets(){
   $('#x-cancel').onclick=closeSheet;
   $('#x-save').onclick=async ()=>{
     const out={}; for(const d of SPRINT_DISTANCES){ const v=$('#tg-'+slug(d)).value.trim(); if(v!=='') out[d]=Number(v); }
-    state.targets=out; try{ await putSetting(targetsKey(), out); }catch(e){ console.error('Saving targets failed', e); }
+    state.targets=out; try{ await putSetting(targetsKey(), out); }catch(e){ notePersistError(e); }
     closeSheet(); render();
   };
 }
@@ -431,11 +448,13 @@ function openWelcome(){
     <p class="sheet-note">This is your training log — pre-loaded with your full programme. It works completely offline, and everything stays on this device.</p>
     <p class="sheet-note">Your programme starts on the date below. Change it if you'd like a different start day — you can always adjust it later in Settings.</p>
     <div class="field"><label>Start date</label><input id="ob-start" type="date" value="${cur}"></div>
-    <div class="sheet-actions"><button class="btn-save" id="ob-go">Start training</button></div>`);
+    <div class="sheet-actions"><button class="btn-save" id="ob-go">Start training</button></div>`,
+    // Mark onboarding complete however the welcome is dismissed, so it never re-shows.
+    { onClose: () => { putSetting(ONBOARDED_KEY(), true).catch(()=>{}); } });
   $('#ob-go').onclick = async () => {
     const v = $('#ob-start').value;
     if(v && v!==cur){ state.assignment = { ...state.assignment, startDate:v };
-      try{ await putSetting('assignment:'+ATHLETE_ID, state.assignment); }catch(e){ console.error('Saving start failed', e); }
+      try{ await putSetting('assignment:'+ATHLETE_ID, state.assignment); }catch(e){ notePersistError(e); }
       materializeDates(); }
     try{ await putSetting(ONBOARDED_KEY(), true); }catch(e){}
     closeSheet(); render();
@@ -561,7 +580,7 @@ function openPlanStart(){
   $('#x-cancel').onclick=closeSheet;
   $('#x-save').onclick=async ()=>{ const v=$('#f-start').value;
     if(v){ state.assignment={ ...state.assignment, startDate:v };
-      try{ await putSetting('assignment:'+ATHLETE_ID, state.assignment); }catch(e){ console.error('Saving plan start failed', e); }
+      try{ await putSetting('assignment:'+ATHLETE_ID, state.assignment); }catch(e){ notePersistError(e); }
       materializeDates(); }
     closeSheet(); render(); };
 }
@@ -645,8 +664,8 @@ function render(){
     $('#view').querySelectorAll('.hist-toggle button[data-hview]').forEach(b=>b.onclick=()=>{
       state.histView=b.dataset.hview; if(b.dataset.hview==='list') state._scrollHistory=true; render(); });
     if(state.histView==='calendar'){
-      const prev=$('#cal-prev'); if(prev) prev.onclick=()=>{ state.histMonth=shiftMonth(calMonth(),-1); render(); };
-      const next=$('#cal-next'); if(next) next.onclick=()=>{ state.histMonth=shiftMonth(calMonth(),+1); render(); };
+      const prev=$('#cal-prev'); if(prev) prev.onclick=()=>{ state.histMonth=shiftMonth(calMonth(),-1); announce(monthLabel(calMonth()+'-01')); render(); };
+      const next=$('#cal-next'); if(next) next.onclick=()=>{ state.histMonth=shiftMonth(calMonth(),+1); announce(monthLabel(calMonth()+'-01')); render(); };
       $('#view').querySelectorAll('.cal-cell.has').forEach(c=>c.onclick=()=>openDetail(c.dataset.id));
     } else {
       const scrollToToday=()=>{ const r=$('#view .row.is-today'); if(r) r.scrollIntoView({block:'center'}); };
@@ -677,13 +696,13 @@ function openDetail(id){ openSheet(card(sessionView(byId(id))));
 
 function openLog(id){
   const se=byId(id); const existing=getLog(id); const lg=existing||{done:false,rpe:null,sleep:null,readiness:null,niggle:'None',note:''};
-  const seg=(name,val,max)=>`<div class="seg" data-seg="${name}">`+Array.from({length:max},(_,i)=>i+1).map(n=>`<button data-v="${n}" class="${val==n?'sel':''}">${n}</button>`).join('')+`</div>`;
+  const seg=(name,val,max,label)=>`<div class="seg" data-seg="${name}" role="group" aria-label="${esc(label||name)}">`+Array.from({length:max},(_,i)=>i+1).map(n=>`<button data-v="${n}" class="${val==n?'sel':''}" aria-pressed="${val==n?'true':'false'}">${n}</button>`).join('')+`</div>`;
   openSheet(`<h3>${esc(se.focus)} · ${se.day}</h3>
-    <div class="field"><label>Done?</label><div class="seg" data-seg="done"><button data-v="1" class="${lg.done?'sel':''}">Yes</button><button data-v="0" class="${!lg.done?'sel':''}">No</button></div></div>
-    <div class="field"><label>RPE (1–10)</label>${seg('rpe',lg.rpe,10)}</div>
+    <div class="field"><label>Done?</label><div class="seg" data-seg="done" role="group" aria-label="Done?"><button data-v="1" class="${lg.done?'sel':''}" aria-pressed="${lg.done?'true':'false'}">Yes</button><button data-v="0" class="${!lg.done?'sel':''}" aria-pressed="${!lg.done?'true':'false'}">No</button></div></div>
+    <div class="field"><label>RPE (1–10)</label>${seg('rpe',lg.rpe,10,'RPE, 1 to 10')}</div>
     <details class="log-more"${(lg.sleep||lg.readiness||(lg.niggle&&lg.niggle!=='None'))?' open':''}><summary>Readiness &amp; wellness</summary>
-      <div class="field"><label>Sleep /10</label>${seg('sleep',lg.sleep,10)}</div>
-      <div class="field"><label>Readiness /10</label>${seg('readiness',lg.readiness,10)}</div>
+      <div class="field"><label>Sleep /10</label>${seg('sleep',lg.sleep,10,'Sleep, out of 10')}</div>
+      <div class="field"><label>Readiness /10</label>${seg('readiness',lg.readiness,10,'Readiness, out of 10')}</div>
       <div class="field"><label>Niggle</label><select id="f-niggle">${NIGGLE.map(o=>`<option ${lg.niggle===o?'selected':''}>${o}</option>`).join('')}</select></div>
     </details>
     <div class="field"><label>Gym loads — optional (feeds Progress charts)</label>
@@ -700,7 +719,7 @@ function openLog(id){
   const sheet=$('#sheet'); const picks={done:lg.done?1:0,rpe:lg.rpe,sleep:lg.sleep,readiness:lg.readiness};
   sheet.querySelectorAll('.seg').forEach(seg=>{ const key=seg.dataset.seg;
     seg.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{ picks[key]=Number(btn.dataset.v);
-      seg.querySelectorAll('button').forEach(x=>x.classList.remove('sel')); btn.classList.add('sel'); }); });
+      seg.querySelectorAll('button').forEach(x=>{ const on=x===btn; x.classList.toggle('sel',on); x.setAttribute('aria-pressed',on?'true':'false'); }); }); });
   $('#x-cancel').onclick=closeSheet;
   // Sprint-time rows: prefill from the log (or one blank row), add/remove dynamically.
   const rowsEl = $('#sprint-rows');
@@ -710,16 +729,18 @@ function openLog(id){
   rowsEl.onclick = e => { if(e.target.classList.contains('sr-del')) e.target.closest('.sprint-row').remove(); };
   const collectSprints = () => Array.from(rowsEl.querySelectorAll('.sprint-row')).map(row=>{
     const dist=row.querySelector('.sr-dist').value; const t=row.querySelector('.sr-time').value.trim();
-    return t==='' ? null : { dist, time:round(Number(t),2) };
+    const n = Number(t);
+    return (t==='' || !Number.isFinite(n)) ? null : { dist, time:round(n,2) };
   }).filter(Boolean);
-  const num = sel => { const v=$(sel).value.trim(); return v===''?null:round(Number(v),2); };
+  // Guard against non-numeric entries (e.g. a stray letter) becoming NaN in the log.
+  const num = sel => { const v=$(sel).value.trim(); const n=Number(v); return (v==='' || !Number.isFinite(n)) ? null : round(n,2); };
   $('#x-save').onclick=()=>{ setLog(id,{done:picks.done===1,rpe:picks.rpe,sleep:picks.sleep,readiness:picks.readiness,
       niggle:$('#f-niggle').value,
       squatKg:num('#f-squat'),hipThrustKg:num('#f-hip'),sprints:collectSprints(),
-      note:$('#f-note').value,date:se.date}); closeSheet(); render(); };
+      note:$('#f-note').value,date:se.date}); announce('Log saved'); closeSheet(); render(); };
   if(existing){ const del=$('#x-delete'); let armed=false;
     del.onclick=()=>{ if(!armed){ armed=true; del.textContent='Tap again to delete'; del.classList.add('armed'); return; }
-      delLog(id); closeSheet(); render(); }; }
+      delLog(id); announce('Log deleted'); closeSheet(); render(); }; }
 }
 
 // --- Modal/sheet: focus management + keyboard (Escape to close, Tab trapped) ---
@@ -730,8 +751,9 @@ function focusablesIn(el){
   return [...el.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])')]
     .filter(n => !n.disabled && n.offsetParent !== null);
 }
-function openSheet(html){
+function openSheet(html, opts = {}){
   _lastFocus = document.activeElement;       // remember what to return focus to
+  state._sheetOnClose = opts.onClose || null;   // runs on ANY dismiss (backdrop / Escape / button)
   const sheet = $('#sheet'); sheet.innerHTML = html;
   // a11y: name the dialog by its heading, and link each field label to its control.
   const heading = sheet.querySelector('h3');
@@ -758,6 +780,8 @@ function closeSheet(){
   $('#modal').classList.add('hidden');
   if(_sheetKeys){ document.removeEventListener('keydown', _sheetKeys); _sheetKeys = null; }
   if(state._syncStatusOff){ state._syncStatusOff(); state._syncStatusOff = null; }  // stop live sync-status updates
+  const onClose = state._sheetOnClose; state._sheetOnClose = null;
+  if(onClose){ try{ onClose(); }catch(e){} }
   if(_lastFocus && _lastFocus.focus){ try{ _lastFocus.focus(); }catch(e){} }
   _lastFocus = null;
 }

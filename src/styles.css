@@ -2,7 +2,7 @@
 :root{
   --bg:#0B0B0C; --surface:#141417; --surface2:#1C1C20; --line:#26262B;
   --text:#ECEAE3; --muted:#8A8A90; --accent:#7FB2D9; --accent-dim:#46647a;
-  --silver:#C9CBD1; --red:#C0563E; --green:#5DAE7E;
+  --silver:#C9CBD1; --red:#C0563E; --red-text:#D86B50; --green:#5DAE7E;
   --radius:16px; --radius-sm:11px;
 }
 :root{color-scheme:dark;}   /* dark-only by design (Quiet Luxury) */
@@ -12,6 +12,8 @@ button:active{transform:scale(.97);}
 @media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important;} }
 /* Keyboard focus visibility (a11y) — pointer taps stay clean via :focus-visible */
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px;}
+/* Visually hidden, but available to screen readers (used for the live-region status text). */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}
 
 /* Initial loading state */
 .loading{display:flex;justify-content:center;align-items:center;min-height:55vh;}
@@ -64,7 +66,7 @@ html,body{margin:0;background:var(--bg);color:var(--text);
 .sync-status::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;flex:none;opacity:.9;}
 .sync-status.sync-ok{color:var(--green);}
 .sync-status.sync-go{color:var(--accent);}
-.sync-status.sync-err{color:var(--red);}
+.sync-status.sync-err{color:var(--red-text);}   /* lighter red — AA contrast on dark surfaces */
 .sync-status.sync-off{color:var(--muted);}
 
 #view{padding:18px 16px 28px;}

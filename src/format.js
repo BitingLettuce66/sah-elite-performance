@@ -15,8 +15,9 @@ export const NIGGLE = ['None','Monitor','Modify','Stop'];
 export const todayISO = () => { const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
 // Round to dp decimals, killing float artefacts (e.g. 3.7399999 → 3.74). null stays null.
 export const round = (v, dp) => v==null ? null : Math.round(v * 10**dp) / 10**dp;
-// Escape the three HTML-significant chars for safe interpolation into markup.
-export const esc = s => (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+// Escape HTML-significant chars — including quotes — so interpolation is safe in
+// both element text AND attribute values (prevents attribute-breakout injection).
+export const esc = s => (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // Slugify a label into an element-id fragment (e.g. "30m fly" → "30m-fly").
 export const slug = s => s.replace(/[^a-z0-9]+/gi, '-');
 // A short, human date: "Fri, 19 Jun".
