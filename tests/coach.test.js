@@ -3,6 +3,7 @@ import {
   normalizeIntake, generatePlanLocal, generateValidatedPlan,
   buildCoachSystemPrompt, buildCoachUserPrompt,
   coachEndpoint, coachConfigured, requestCoachPlan,
+  swapSessionById, regenerateSessionLocal, regenerateOneSession,
 } from '../src/coach.js';
 import { loadPlan } from '../src/plan-validator.js';
 import { addDays } from '../src/logic.js';
@@ -124,5 +125,96 @@ describe('endpoint resolution + network seam', () => {
     const fakeFetch = async () => ({ ok: false, status: 502, json: async () => ({ error: 'upstream' }) });
     await expect(requestCoachPlan(intake, '', { endpoint: 'https://x/functions/v1/coach', fetch: fakeFetch, env: {} }))
       .rejects.toThrow(/502/);
+  });
+});
+
+describe('regenerate ONE session', () => {
+  // A validated base plan (sessions carry ids). RACE at offset 0, target RECOVERY at offset 1.
+  const raceBase = loadPlan({
+    name: 'Race base', startDate: '2026-07-01',
+    sessions: [
+      { phase: 'P', week: 1, day: 'Mon', type: 'RACE', offsetDays: 0, sprint: 'Race 100m' },
+      { phase: 'P', week: 1, day: 'Tue', type: 'RECOVERY', offsetDays: 1 },
+    ],
+  }).data;
+  const targetId = raceBase.sessions[1].id;
+
+  it('swapSessionById force-pins the slot even when the patch tries to move it', () => {
+    const out = swapSessionById(raceBase, targetId, { id: 'evil', offsetDays: 999, day: 'Sun', week: 9, phase: 'X', type: 'LOW', sprint: 'z' });
+    const s = out.sessions.find(x => x.offsetDays === 1);
+    expect(s.id).toBe(targetId);     // id locked
+    expect(s.day).toBe('Tue');       // slot locked
+    expect(s.week).toBe(1);
+    expect(s.offsetDays).toBe(1);
+    expect(s.type).toBe('LOW');      // content changed
+    expect(s.sprint).toBe('z');
+  });
+
+  it('offline regen produces a valid full plan and preserves the slot', async () => {
+    const r = await regenerateOneSession(raceBase, targetId);
+    expect(r.ok, JSON.stringify(r.errors)).toBe(true);
+    expect(r.data.template).toBeUndefined();   // flat, engine-ready
+    const s = r.data.sessions.find(x => x.id === targetId);
+    expect(s.offsetDays).toBe(1);              // slot intact
+    expect(loadPlan(r.data).ok).toBe(true);
+  });
+
+  it('rejects an unsafe replacement then succeeds on the re-prompt, feeding issues back', async () => {
+    const seen = [];
+    // First draft: HIGH the day after a RACE → VG_NO_REST_AFTER_RACE. Then a safe TAPER.
+    const generate = (_p, _old, priorIssues) => {
+      seen.push(priorIssues);
+      return priorIssues ? { type: 'TAPER', sprint: 'easy strides' } : { type: 'HIGH', sprint: 'max' };
+    };
+    const r = await regenerateOneSession(raceBase, targetId, { generate });
+    expect(r.ok, JSON.stringify(r.errors)).toBe(true);
+    expect(r.attempts).toBe(2);
+    expect(seen[0]).toBe('');
+    expect(seen[1]).toMatch(/VG_NO_REST_AFTER_RACE/);   // the breach was fed back
+    expect(r.data.sessions.find(x => x.id === targetId).type).toBe('TAPER');
+    // only the target changed
+    expect(r.data.sessions.find(x => x.offsetDays === 0).type).toBe('RACE');
+  });
+
+  it('returns a clean failure (no plan) when every replacement breaches a neighbour rule', async () => {
+    const generate = () => ({ type: 'HIGH', sprint: 'max' });   // always unsafe after a RACE
+    const r = await regenerateOneSession(raceBase, targetId, { generate, maxAttempts: 3 });
+    expect(r.ok).toBe(false);
+    expect(r.data).toBe(null);
+    expect(r.swappedSessionId).toBe(targetId);
+    expect(r.errors.some(e => e.code === 'VG_NO_REST_AFTER_RACE')).toBe(true);
+    // input plan untouched
+    expect(raceBase.sessions.find(x => x.id === targetId).type).toBe('RECOVERY');
+  });
+
+  it('surfaces a generator throw and an unknown session id', async () => {
+    const thrown = await regenerateOneSession(raceBase, targetId, { generate: () => { throw new Error('coach down'); } });
+    expect(thrown.ok).toBe(false);
+    expect(thrown.errors[0].code).toBe('COACH_GENERATE_FAILED');
+
+    let called = false;
+    const missing = await regenerateOneSession(raceBase, 'NOPE', { generate: () => { called = true; return {}; } });
+    expect(missing.ok).toBe(false);
+    expect(missing.errors[0].code).toBe('REGEN_SESSION_NOT_FOUND');
+    expect(missing.attempts).toBe(0);
+    expect(called).toBe(false);                 // never calls the model for a missing id
+  });
+
+  it('regenerateSessionLocal stays safe next to hard days and is deterministic', () => {
+    // Day after a RACE → must become a recovery day.
+    const afterRace = regenerateSessionLocal(raceBase, targetId);
+    expect(afterRace.sessions.find(x => x.id === targetId).type).toBe('RECOVERY');
+    expect(loadPlan(afterRace).ok).toBe(true);
+    expect(JSON.stringify(regenerateSessionLocal(raceBase, targetId))).toBe(JSON.stringify(afterRace));
+
+    // Adjacent to a HIGH (not after a race) → picks a non-high type, still valid.
+    const adj = loadPlan({ name: 'Adj', startDate: '2026-07-01', sessions: [
+      { phase: 'P', week: 1, day: 'Mon', type: 'HIGH', offsetDays: 0, sprint: 'a' },
+      { phase: 'P', week: 1, day: 'Tue', type: 'LOW', offsetDays: 1, sprint: 'b' },
+    ] }).data;
+    const tid = adj.sessions.find(x => x.offsetDays === 1).id;
+    const out = regenerateSessionLocal(adj, tid);
+    expect(['MOD', 'LOW', 'RECOVERY']).toContain(out.sessions.find(x => x.id === tid).type);
+    expect(loadPlan(out).ok).toBe(true);
   });
 });

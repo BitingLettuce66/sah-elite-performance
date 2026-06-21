@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { handleCoach } from '../supabase/functions/coach/handler.js';
+import { handleCoach, handleRegenSession } from '../supabase/functions/coach/handler.js';
+import { loadPlan } from '../src/plan-validator.js';
 
 // Mocked Claude outputs — NO real API, no key, no network.
 const SAFE_PLAN = {
@@ -75,5 +76,50 @@ describe('coach edge function — server-side safety re-check', () => {
     expect(r.status).toBe(502);
     expect(r.body.plan).toBeUndefined();
     expect(r.body.error).toMatch(/overloaded|unavailable/i);
+  });
+});
+
+describe('coach edge function — single-session regen (handleRegenSession)', () => {
+  // Validated base with ids: RACE at offset 0, target RECOVERY at offset 1.
+  const base = loadPlan({
+    name: 'Race base', startDate: '2026-07-01',
+    sessions: [
+      { phase: 'P', week: 1, day: 'Mon', type: 'RACE', offsetDays: 0, sprint: 'Race 100m' },
+      { phase: 'P', week: 1, day: 'Tue', type: 'RECOVERY', offsetDays: 1 },
+    ],
+  }).data;
+  const targetId = base.sessions[1].id;
+
+  it('returns a validated swapped plan on a safe replacement', async () => {
+    const callClaudeSession = () => ({ type: 'TAPER', sprint: 'easy strides' });   // valid after a RACE
+    const r = await handleRegenSession({ plan: base, sessionId: targetId, feedback: '', callClaudeSession });
+    expect(r.status).toBe(200);
+    expect(loadPlan(r.body.plan).ok).toBe(true);
+    expect(r.body.plan.sessions.find(s => s.id === targetId).type).toBe('TAPER');
+    expect(r.body.plan.sessions.find(s => s.offsetDays === 0).type).toBe('RACE');   // only target changed
+  });
+
+  it('returns 422 with no plan when every replacement breaches a neighbour rule', async () => {
+    const callClaudeSession = () => ({ type: 'HIGH', sprint: 'max' });   // HIGH after a RACE → always rejected
+    const r = await handleRegenSession({ plan: base, sessionId: targetId, feedback: '', callClaudeSession, maxAttempts: 3 });
+    expect(r.status).toBe(422);
+    expect(r.body.plan).toBeUndefined();
+    expect(r.body.issues.join(' ')).toMatch(/recovery day|VG_NO_REST_AFTER_RACE|RACE/i);
+  });
+
+  it('blocks regen on red-flag feedback (no model call)', async () => {
+    let called = 0;
+    const callClaudeSession = () => { called++; return { type: 'LOW', sprint: 'x' }; };
+    const r = await handleRegenSession({ plan: base, sessionId: targetId, feedback: 'sharp chest pain when I run', callClaudeSession });
+    expect(called).toBe(0);
+    expect(r.status).toBe(422);
+    expect(r.body.redFlag).toBe(true);
+  });
+
+  it('surfaces an upstream failure as 502', async () => {
+    const callClaudeSession = () => { throw new Error('Anthropic error 529: overloaded'); };
+    const r = await handleRegenSession({ plan: base, sessionId: targetId, feedback: '', callClaudeSession });
+    expect(r.status).toBe(502);
+    expect(r.body.plan).toBeUndefined();
   });
 });

@@ -17,7 +17,7 @@ import { TYPE, NIGGLE, todayISO, round, esc, slug, fmtDate, monthLabel, pill } f
 import { buildBackup, validateBackup, normalizeImported } from './backup.js';
 import { loadPlan } from './plan-validator.js';
 import { calendarCells } from './calendar.js';
-import { generateValidatedPlan, requestCoachPlan, generatePlanLocal, coachConfigured, SPORTS, EQUIPMENT } from './coach.js';
+import { generateValidatedPlan, requestCoachPlan, generatePlanLocal, coachConfigured, SPORTS, EQUIPMENT, regenerateOneSession, requestRegenSession } from './coach.js';
 import { scanRedFlags } from './red-flags.js';
 import { AUTH_ENABLED, sendMagicLink, getUser, signOut, onAuthChange } from './auth.js';
 
@@ -283,6 +283,62 @@ function previewCoachPlan(data, warnings, startDefault){
   };
 }
 
+// --- Regenerate ONE session: rework a single session in place via the coach,
+//     re-validating the WHOLE plan, without rebuilding the programme. ---
+function openRegen(id){
+  const se = byId(id); if(!se) return;
+  openSheet(`<h3>Regenerate this session</h3>
+    <p class="sheet-note">The coach will rework <b>${esc(se.focus)}</b> (${se.day} · Wk ${se.week}) while keeping its place in your week. The whole plan is re-checked for safety before anything changes.</p>
+    <div class="field"><label for="rg-why">Why doesn't it fit? (optional)</label><textarea id="rg-why" rows="2" placeholder="e.g. too hard, want more speed, sore that day"></textarea></div>
+    <div class="sheet-actions"><button class="btn-cancel" id="rg-cancel">Cancel</button><button class="btn-save" id="rg-go">Regenerate</button></div>`);
+  $('#rg-cancel').onclick = closeSheet;
+  $('#rg-go').onclick = () => runRegen(id, $('#rg-why').value || '');
+}
+async function runRegen(id, feedback){
+  const se = byId(id); if(!se) return;
+  const live = coachConfigured();
+  openSheet(`<h3>Coaching…</h3>
+    <p class="sheet-note">${live ? 'Reworking this session with the AI coach…' : 'Reworking this session…'}</p>
+    <div class="sheet-actions"><button class="btn-cancel" id="rg-abort">Cancel</button></div>`);
+  let cancelled = false; $('#rg-abort').onclick = () => { cancelled = true; closeSheet(); };
+  const generate = live ? (p, _old, issues) => requestRegenSession(p, id, feedback, issues) : undefined;
+  let res;
+  try { res = await regenerateOneSession(state.data, id, { generate, feedback }); }
+  catch(e){ res = { ok:false, data:null, errors:[{ message:e.message || 'Regeneration failed.' }] }; }
+  if(cancelled) return;
+  if(!res.ok){
+    const items = (res.errors||[]).slice(0,8).map(e=>`<li>${esc(e.message)}</li>`).join('');
+    openSheet(`<h3>Couldn't safely rework this one</h3>
+      <p class="sheet-note">Your plan is unchanged. The reworked session didn't pass the safety checks:</p>
+      <ul class="sheet-errs">${items}</ul>
+      <div class="sheet-actions"><button class="btn-cancel" id="rg-keep">Keep current</button><button class="btn-save" id="rg-retry">Try again</button></div>`);
+    $('#rg-keep').onclick = closeSheet;
+    $('#rg-retry').onclick = () => runRegen(id, feedback);
+    return;
+  }
+  previewRegen(se, res.data, id);
+}
+function previewRegen(oldSe, data, id){
+  const neu = (data.sessions||[]).find(s=>s.id===id) || {};
+  const col = (label, s) => `<div class="rg-col"><div class="rg-h">${label}</div><div>${pill(s.type)} <b>${esc(s.focus||'')}</b></div><p class="sheet-note">${esc(s.sprint||s.gym||'Rest')}</p></div>`;
+  openSheet(`<h3>Reworked session</h3>
+    <div class="rg-compare">${col('Before', oldSe)}${col('After', neu)}</div>
+    <p class="sheet-note">Same day &amp; week — the whole plan still passes the safety checks.</p>
+    <div class="sheet-actions"><button class="btn-cancel" id="rg-discard">Discard</button><button class="btn-save" id="rg-accept">Use this session</button></div>`);
+  $('#rg-discard').onclick = closeSheet;
+  $('#rg-accept').onclick = async () => { closeSheet(); await installSessionSwap(data); };
+}
+// Apply a single-session swap: re-validate the whole plan (defence in depth), then
+// persist + render WITHOUT re-anchoring the start date (the slot is unchanged).
+async function installSessionSwap(data){
+  const r = loadPlan(data);
+  if(!r.ok){ showToast('Could not apply — failed the safety re-check.', null, null, 3500); return; }
+  state.data = withPlanIdentity(r.data);
+  try { await putSetting(planKey(), state.data); } catch(e){ console.error('Saving reworked plan failed', e); }
+  materializeDates(); render();
+  showToast('Session updated', null, null, 2500);
+}
+
 async function boot(){
   let raw;
   try { const r = await fetch('./data/seed.json'); raw = await r.json(); }
@@ -351,7 +407,7 @@ function card(se, opts={}){
     ? `<details class="rules-tog"><summary>Session rules &amp; cues</summary><ul>${state.data.rules.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>` : '';
   const actions = lg.done
     ? `<button class="btn-log" data-id="${se.id}">Edit log</button>`
-    : `<div class="card-actions"><button class="btn-done" data-id="${se.id}">✓ Mark done</button><button class="btn-log alt" data-id="${se.id}">Details</button></div>`;
+    : `<div class="card-actions"><button class="btn-done" data-id="${se.id}">✓ Mark done</button><button class="btn-log alt" data-id="${se.id}">Details</button>${se.type==='RECOVERY' ? '' : `<button class="btn-regen alt" data-id="${se.id}">Regenerate</button>`}</div>`;
   // Today hero: eyebrow → big display title → live-dot meta → week dots, then the usual body.
   if(opts.hero){
     return `<article class="card card-hero">
@@ -806,6 +862,7 @@ function render(){
   const se=findToday(); $('#phase').textContent = se?`${se.phase} · Wk ${se.week}`:'';
   $('#view').querySelectorAll('.btn-log').forEach(b=>b.onclick=()=>openLog(b.dataset.id));
   $('#view').querySelectorAll('.btn-done').forEach(b=>b.onclick=()=>quickDone(b.dataset.id));
+  $('#view').querySelectorAll('.btn-regen').forEach(b=>b.onclick=()=>openRegen(b.dataset.id));
   $('#view').querySelectorAll('.row-main').forEach(b=>b.onclick=()=>openDetail(b.dataset.id));
   $('#view').querySelectorAll('.row-dot').forEach(b=>b.onclick=()=>toggleDone(b.dataset.done));
   $('#view').querySelectorAll('.wk-cell, .nextup').forEach(b=>b.onclick=()=>openDetail(b.dataset.id));
@@ -841,6 +898,7 @@ function render(){
 
 function openDetail(id){ openSheet(card(sessionView(byId(id))));
   $('#sheet').querySelectorAll('.btn-log').forEach(b=>b.onclick=()=>openLog(b.dataset.id));
+  $('#sheet').querySelectorAll('.btn-regen').forEach(b=>b.onclick=()=>openRegen(b.dataset.id));
   $('#sheet').querySelectorAll('.btn-done').forEach(b=>b.onclick=()=>{ quickDone(b.dataset.id); closeSheet(); }); }
 
 function openLog(id){

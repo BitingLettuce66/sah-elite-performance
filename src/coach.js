@@ -165,6 +165,68 @@ export async function generateValidatedPlan(intake, opts = {}) {
   return { ...last, attempts: maxAttempts };
 }
 
+// ---- regenerate ONE session ------------------------------------------------
+//
+// Treat a single-session regen as a WHOLE-plan generation whose draft is the
+// current plan with exactly one session replaced in its fixed slot, then drive
+// the SAME generateValidatedPlan loop with the default loadPlan validate — so the
+// entire swapped plan re-passes every neighbour-spanning guard (consecutive-high,
+// rolling-7, rest-after-RACE/DELOAD). No safety rule is duplicated.
+
+/* Replace one session by id, FORCING the slot (id/offsetDays/day/week/phase) back
+   to the original so the calendar position and the log key can never move — only
+   type/focus/surface/sprint/gym/warmup/cooldown can change. Returns a flat plan. */
+export function swapSessionById(plan, sessionId, patch) {
+  const sessions = (plan.sessions || []).map(s => {
+    if (s.id !== sessionId) return s;
+    return { ...s, ...patch, id: s.id, offsetDays: s.offsetDays, day: s.day, week: s.week, phase: s.phase };
+  });
+  return { ...plan, sessions };
+}
+
+// Downgrade-biased alternatives (a "regenerate" usually means "this doesn't fit");
+// all three are non-high-intensity so they can't trip the high-load guards.
+const SAFE_TYPE_LADDER = ['MOD', 'LOW', 'RECOVERY'];
+
+/* Deterministic offline replacement for one session, safe by construction: it
+   reads the neighbour the day before and never produces a type that would breach a
+   rest rule (only RECOVERY/DELOAD/TAPER may follow a RACE). Returns a flat plan. */
+export function regenerateSessionLocal(plan, sessionId, feedback = '') {
+  const old = (plan.sessions || []).find(s => s.id === sessionId);
+  if (!old) return plan;
+  const prevTypes = (plan.sessions || []).filter(s => s.offsetDays === old.offsetDays - 1).map(s => s.type);
+  let candidates = SAFE_TYPE_LADDER.filter(t => t !== old.type);
+  if (prevTypes.includes('RACE')) candidates = ['RECOVERY'];   // day after a race must be recovery
+  const type = candidates[0] || 'RECOVERY';
+  const isRest = type === 'RECOVERY';
+  return swapSessionById(plan, sessionId, {
+    type,
+    focus: isRest ? 'Recovery' : 'Reworked',
+    sprint: isRest ? '' : (SPRINT_TEXT[type] || SPRINT_TEXT.LOW),
+    gym: '',
+  });
+}
+
+/* regenerateOneSession(plan, sessionId, opts?) -> { ok, data, errors, warnings, attempts, swappedSessionId }
+   opts.generate(plan, oldSession, priorIssues) returns either a full plan or a single
+   replacement session (the live model path); omit it to use the local generator. The
+   draft is always funnelled back to the FULL plan with the slot re-pinned, so loadPlan
+   re-validates everything. On not-found / persistent breach / generator throw it
+   returns ok:false and the caller installs nothing. */
+export async function regenerateOneSession(plan, sessionId, opts = {}) {
+  const old = (plan.sessions || []).find(s => s.id === sessionId);
+  if (!old) {
+    return { ok: false, data: null, errors: [{ code: 'REGEN_SESSION_NOT_FOUND', message: `No session with id "${sessionId}".`, path: '' }], warnings: [], attempts: 0, swappedSessionId: sessionId };
+  }
+  const generateFull = async (p, priorIssues) => {
+    const draft = opts.generate ? await opts.generate(p, old, priorIssues) : regenerateSessionLocal(p, sessionId, opts.feedback);
+    // A full-plan draft → re-pin the slot; a single-session draft → swap it into the plan.
+    return (draft && Array.isArray(draft.sessions)) ? swapSessionById(draft, sessionId, {}) : swapSessionById(p, sessionId, draft || {});
+  };
+  const res = await generateValidatedPlan(plan, { generate: generateFull, validate: opts.validate, maxAttempts: opts.maxAttempts || 3 });
+  return { ...res, swappedSessionId: sessionId };
+}
+
 // ---- the network seam to the Edge Function ---------------------------------
 
 /* Resolve the coach endpoint from the Supabase env (same project as auth/sync).
@@ -200,4 +262,31 @@ export async function requestCoachPlan(intake, priorIssues = '', opts = {}) {
   const body = await res.json();
   if (!body || !body.plan) throw new Error('Coach returned no plan.');
   return body.plan;
+}
+
+/* Ask the Edge Function for ONE replacement session (mode:'regen'). Returns the
+   single session object; used as regenerateOneSession's opts.generate on the live
+   path. Throws on network/HTTP error so the loop can surface it. */
+export async function requestRegenSession(plan, sessionId, feedback = '', priorIssues = '', opts = {}) {
+  const env = opts.env || (import.meta && import.meta.env) || {};
+  const endpoint = opts.endpoint || coachEndpoint(env);
+  if (!endpoint) throw new Error('Coach endpoint not configured.');
+  const fetchImpl = opts.fetch || fetch;
+  const anon = env.VITE_SUPABASE_ANON_KEY;
+  const res = await fetchImpl(endpoint, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(anon ? { apikey: anon, authorization: `Bearer ${opts.token || anon}` } : {}),
+    },
+    body: JSON.stringify({ mode: 'regen', plan, sessionId, feedback, priorIssues }),
+  });
+  if (!res.ok) {
+    let detail = '';
+    try { detail = (await res.json()).error || ''; } catch (e) { /* ignore */ }
+    throw new Error(`Coach request failed (${res.status})${detail ? `: ${detail}` : ''}`);
+  }
+  const body = await res.json();
+  if (!body || !body.session) throw new Error('Coach returned no session.');
+  return body.session;
 }

@@ -9,7 +9,7 @@
    index.ts injects the real Claude caller; tests inject a mock. Keeping this pure
    is what lets the server safety net be unit-tested fully offline. */
 
-import { normalizeIntake, generateValidatedPlan } from '../../../src/coach.js';
+import { normalizeIntake, generateValidatedPlan, regenerateOneSession } from '../../../src/coach.js';
 import { scanRedFlags } from '../../../src/red-flags.js';
 
 export const COACH_MAX_ATTEMPTS = 3;
@@ -48,6 +48,37 @@ export async function handleCoach({ intake, callClaude, maxAttempts = COACH_MAX_
       error: upstreamFailed
         ? ((res.errors[0] && res.errors[0].message) || 'The coach is unavailable right now.')
         : 'The coach could not produce a plan within the safety limits. Try adjusting your goal or sessions per week.',
+      issues: (res.errors || []).map(e => e.message),
+      attempts: res.attempts,
+    },
+  };
+}
+
+/* handleRegenSession({ plan, sessionId, feedback, callClaudeSession, maxAttempts }) -> { status, body }
+   The single-session sibling of handleCoach: red-flag-gates the FEEDBACK text first
+   (no model call on a flag), then runs the same regenerate→validate→re-prompt loop
+   server-side over the WHOLE swapped plan. 200 {plan} only on a fully valid swap;
+   422 on a persistent cap breach (never an unsafe plan); 502 on upstream failure.
+   - callClaudeSession(plan, sessionId, feedback, priorIssues) returns ONE session. */
+export async function handleRegenSession({ plan, sessionId, feedback = '', callClaudeSession, maxAttempts = COACH_MAX_ATTEMPTS }) {
+  const flags = scanRedFlags(feedback);
+  if (flags.flagged) {
+    return { status: 422, body: { error: flags.advice, redFlag: true, categories: flags.categories } };
+  }
+
+  const res = await regenerateOneSession(plan, sessionId, {
+    generate: (p, _old, priorIssues) => callClaudeSession(p, sessionId, feedback, priorIssues),
+    maxAttempts,
+  });
+  if (res.ok) return { status: 200, body: { plan: res.data } };
+
+  const upstreamFailed = (res.errors || []).some(e => e.code === 'COACH_GENERATE_FAILED');
+  return {
+    status: upstreamFailed ? 502 : 422,
+    body: {
+      error: upstreamFailed
+        ? ((res.errors[0] && res.errors[0].message) || 'The coach is unavailable right now.')
+        : 'The coach could not safely rework that session. Try different feedback.',
       issues: (res.errors || []).map(e => e.message),
       attempts: res.attempts,
     },

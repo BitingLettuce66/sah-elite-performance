@@ -17,7 +17,7 @@
 
 import { buildCoachSystemPrompt, buildCoachUserPrompt } from '../../../src/coach.js';
 import { KNOWN_TYPES, DAYS } from '../../../src/plan-schema.js';
-import { handleCoach } from './handler.js';
+import { handleCoach, handleRegenSession } from './handler.js';
 import { readAnthropicSSE, decodeStream } from './sse.js';
 
 const MODEL = 'claude-opus-4-8';
@@ -29,8 +29,26 @@ const CORS = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'content-type': 'application/json' } });
 
-// Structured-output schema (API-call shape). Type/day enums reuse the contract
+// Structured-output schemas (API-call shape). Type/day enums reuse the contract
 // constants; the client + server validators enforce the numeric guards + dates.
+const SESSION_ITEM_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['week', 'day', 'type', 'offsetDays'],
+  properties: {
+    phase: { type: 'string' },
+    week: { type: 'integer' },
+    day: { type: 'string', enum: DAYS },
+    type: { type: 'string', enum: KNOWN_TYPES },
+    offsetDays: { type: 'integer' },
+    focus: { type: 'string' },
+    surface: { type: 'string' },
+    sprint: { type: 'string' },
+    gym: { type: 'string' },
+    warmup: { type: 'string' },
+    cooldown: { type: 'string' },
+  },
+};
 const PLAN_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -41,59 +59,67 @@ const PLAN_SCHEMA = {
     goal: { type: 'string' },
     source: { type: 'string', enum: ['ai'] },
     startDate: { type: 'string', description: 'YYYY-MM-DD' },
-    sessions: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['week', 'day', 'type', 'offsetDays'],
-        properties: {
-          phase: { type: 'string' },
-          week: { type: 'integer' },
-          day: { type: 'string', enum: DAYS },
-          type: { type: 'string', enum: KNOWN_TYPES },
-          offsetDays: { type: 'integer' },
-          focus: { type: 'string' },
-          surface: { type: 'string' },
-          sprint: { type: 'string' },
-          gym: { type: 'string' },
-          warmup: { type: 'string' },
-          cooldown: { type: 'string' },
-        },
-      },
-    },
+    sessions: { type: 'array', items: SESSION_ITEM_SCHEMA },
   },
 };
+// One replacement session (regen mode) — same shape, plus its locked id.
+const SESSION_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'week', 'day', 'type', 'offsetDays'],
+  properties: { id: { type: 'string' }, ...SESSION_ITEM_SCHEMA.properties },
+};
 
-// One Claude call → a flat plan. STREAMS the response: a long plan (up to the
-// 16-week × 6-day cap) can run well past a non-streaming output ceiling, so we
-// raise max_tokens and stream to avoid truncation + HTTP timeouts. Throws on HTTP
-// error / refusal / truncation / unparseable output so the handler's loop records
-// a generation failure.
+// Shared streaming call → the model's text. STREAMS so a long output can't truncate
+// or hit an HTTP timeout. Throws on HTTP error / refusal / truncation / stream error
+// so the handler's loop records a generation failure.
+async function streamClaude(apiKey: string, body: Record<string, unknown>) {
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: MODEL, stream: true, thinking: { type: 'adaptive' }, ...body }),
+  });
+  if (!resp.ok) throw new Error(`Anthropic error ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  if (!resp.body) throw new Error('Anthropic returned an empty stream.');
+  const { text, stopReason, error } = await readAnthropicSSE(decodeStream(resp.body));
+  if (error) throw new Error(`Anthropic stream error: ${error}`);
+  if (stopReason === 'refusal') throw new Error('The coach declined this request.');
+  if (stopReason === 'max_tokens') throw new Error('The response was too long to finish — try fewer weeks/sessions or simpler feedback.');
+  return text;
+}
+
+// Full-plan generation (coach mode). 64K headroom for long plans; streaming makes it safe.
 function makeCallClaude(apiKey: string) {
-  return async (intake: Record<string, unknown>, priorIssues: string) => {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 64000,            // headroom for long plans; streaming makes this safe
-        stream: true,
-        thinking: { type: 'adaptive' },
-        output_config: { effort: 'medium', format: { type: 'json_schema', schema: PLAN_SCHEMA } },
-        system: buildCoachSystemPrompt(),
-        messages: [{ role: 'user', content: buildCoachUserPrompt(intake, priorIssues) }],
-      }),
-    });
-    if (!resp.ok) throw new Error(`Anthropic error ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
-    if (!resp.body) throw new Error('Anthropic returned an empty stream.');
-    const { text, stopReason, error } = await readAnthropicSSE(decodeStream(resp.body));
-    if (error) throw new Error(`Anthropic stream error: ${error}`);
-    if (stopReason === 'refusal') throw new Error('The coach declined this request.');
-    if (stopReason === 'max_tokens') {
-      throw new Error('The plan was too long to finish — try fewer weeks or sessions per week.');
-    }
-    return JSON.parse(text);   // throws on unparseable → recorded as a generation failure
+  return async (intake: Record<string, unknown>, priorIssues: string) =>
+    JSON.parse(await streamClaude(apiKey, {
+      max_tokens: 64000,
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema: PLAN_SCHEMA } },
+      system: buildCoachSystemPrompt(),
+      messages: [{ role: 'user', content: buildCoachUserPrompt(intake, priorIssues) }],
+    }));
+}
+
+// One replacement session (regen mode): the model gets the whole plan as context and
+// the target's fixed slot, and returns ONE session. The slot is re-pinned + the whole
+// plan re-validated server-side, so this prompt is guidance, not the gate.
+function makeCallClaudeSession(apiKey: string) {
+  return async (plan: { sessions?: Array<Record<string, unknown>>; name?: string; sport?: string; startDate?: string }, sessionId: string, feedback: string, priorIssues: string) => {
+    const target = (plan.sessions || []).find(s => s.id === sessionId) || {};
+    const content = [
+      "The athlete's current full plan (JSON):",
+      JSON.stringify({ name: plan.name, sport: plan.sport, startDate: plan.startDate, sessions: plan.sessions }),
+      '',
+      `Replace ONLY the session with id "${sessionId}" (day ${target.day}, week ${target.week}, offsetDays ${target.offsetDays}). Keep its slot exactly — same id, day, week, offsetDays, phase. Choose a type/prescription that fits the surrounding sessions and respects every safety limit.`,
+      feedback ? `Athlete feedback: ${feedback}` : '',
+      priorIssues ? `Your previous replacement was REJECTED — fix these and try again:\n${priorIssues}` : '',
+      'Return ONLY the single replacement session as JSON.',
+    ].filter(Boolean).join('\n');
+    return JSON.parse(await streamClaude(apiKey, {
+      max_tokens: 4000,
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema: SESSION_SCHEMA } },
+      system: buildCoachSystemPrompt(),
+      messages: [{ role: 'user', content }],
+    }));
   };
 }
 
@@ -104,15 +130,25 @@ Deno.serve(async (req: Request) => {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) return json({ error: 'Coach is not configured (missing ANTHROPIC_API_KEY).' }, 503);
 
-  let intake: Record<string, unknown> = {};
+  let payload: Record<string, unknown> = {};
   try {
-    intake = (await req.json())?.intake ?? {};
+    payload = (await req.json()) ?? {};
   } catch {
     return json({ error: 'Invalid JSON body.' }, 400);
   }
 
-  // The handler runs the red-flag re-check + validate/re-prompt loop; the model
-  // call is injected so the safety logic is identical to what the tests exercise.
-  const { status, body } = await handleCoach({ intake, callClaude: makeCallClaude(apiKey) });
+  // The handlers run the red-flag re-check + validate/re-prompt loop; the model call
+  // is injected so the safety logic is identical to what the offline tests exercise.
+  if (payload.mode === 'regen') {
+    const { status, body } = await handleRegenSession({
+      plan: payload.plan as Record<string, unknown>,
+      sessionId: payload.sessionId as string,
+      feedback: (payload.feedback as string) || '',
+      callClaudeSession: makeCallClaudeSession(apiKey),
+    });
+    return json(body, status);
+  }
+
+  const { status, body } = await handleCoach({ intake: payload.intake ?? {}, callClaude: makeCallClaude(apiKey) });
   return json(body, status);
 });
