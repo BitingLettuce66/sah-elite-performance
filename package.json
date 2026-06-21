@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview --host",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ship": "bash scripts/ship.sh"
   },
   "devDependencies": {
     "fake-indexeddb": "^6.0.0",
