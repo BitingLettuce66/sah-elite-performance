@@ -270,10 +270,137 @@
     .ramp .sw b{display:block;font-size:12px;font-weight:600;}
     .ramp .sw span{display:block;font-size:11px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums;}
 
+    /* ===================================================================
+       REFERENCE LIBRARY — fuller component + foundation set.
+       Re-themes live with the picker above (body[data-accent|data-font]).
+       =================================================================== */
+    .lib-banner{display:flex;align-items:center;gap:10px;background:var(--surface-1);border-radius:var(--r-sm);
+      padding:12px 16px;margin:6px 0 30px;box-shadow:inset 0 0 0 1px var(--hairline);font-size:13px;color:var(--muted);}
+    .lib-banner .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none;box-shadow:0 0 0 4px var(--accent-glow);}
+    .lib-banner b{color:var(--text);font-weight:600;}
+
+    /* Panels — neutral cards that hold a component demo */
+    .panel{background:var(--surface-2);border-radius:var(--r-md);padding:22px;box-shadow:var(--shadow-card);}
+    .panel + .panel{margin-top:18px;}
+    .panel-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+    @media (max-width:880px){ .panel-grid{grid-template-columns:1fr;} }
+    .panel > .label{display:block;margin:0 0 16px;}
+
+    /* Type scale */
+    .scale{display:flex;flex-direction:column;}
+    .scale-row{display:flex;align-items:baseline;gap:24px;padding:16px 0;border-bottom:1px solid var(--hairline);}
+    .scale-row:last-child{border-bottom:none;}
+    .scale-row .sr-meta{flex:none;width:150px;}
+    .scale-row .sr-name{font-size:11px;letter-spacing:.14em;color:var(--text);font-weight:600;text-transform:uppercase;}
+    .scale-row .sr-spec{font-size:11.5px;color:var(--faint);font-variant-numeric:tabular-nums;margin-top:4px;line-height:1.4;}
+    .scale-row .sr-sample{min-width:0;}
+    .s-display{font-family:var(--display);font-weight:600;letter-spacing:-.015em;font-size:27px;line-height:1.1;}
+    .s-h{font-family:var(--display);font-weight:600;letter-spacing:-.01em;font-size:19px;}
+    .s-body{font-family:var(--body);font-size:14.5px;line-height:1.55;color:var(--text);}
+    .s-label{font-family:var(--body);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);}
+    .s-metric{font-family:var(--display);font-weight:700;font-size:34px;line-height:1;letter-spacing:-.01em;
+      font-variant-numeric:tabular-nums;font-feature-settings:"tnum";color:var(--accent);}
+
+    /* Spacing + radii */
+    .space-list{display:flex;flex-direction:column;gap:11px;}
+    .space-item{display:flex;align-items:center;gap:16px;}
+    .space-item .sp-bar{height:14px;background:var(--accent);border-radius:4px;opacity:.85;}
+    .space-item .sp-val{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;width:64px;flex:none;}
+    .radii{display:flex;gap:16px;flex-wrap:wrap;}
+    .radii .rd{width:104px;height:80px;background:var(--surface-1);box-shadow:inset 0 0 0 1px var(--hairline);
+      display:flex;align-items:flex-end;padding:9px 10px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;}
+    .radii .rd.sm{border-radius:var(--r-sm);} .radii .rd.md{border-radius:var(--r-md);} .radii .rd.lg{border-radius:var(--r-lg);}
+
+    /* Button states + variants — hover/active/focus shown via :state AND .is-* clones */
+    .btn-danger{color:#fff;background:var(--danger);}
+    .btn-primary:hover,.btn-primary.is-hover{filter:brightness(1.07);transform:translateY(-1px);
+      box-shadow:0 9px 28px var(--accent-glow);}
+    .btn-ghost.is-hover{background:var(--surface-3);}
+    .btn.is-active{transform:scale(.98);filter:brightness(.97);}
+    .btn.is-focus,.btn:focus-visible{outline:none;box-shadow:0 0 0 1px var(--accent),0 0 0 4px var(--accent-glow);}
+    .btn-primary.is-focus,.btn-primary:focus-visible{box-shadow:var(--shadow-glow),0 0 0 1px var(--accent),0 0 0 4px var(--accent-glow);}
+    .btn:disabled,.btn.is-disabled{opacity:.42;cursor:not-allowed;box-shadow:none;filter:none;transform:none;}
+    .state-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:18px;}
+    .state-cell{display:flex;flex-direction:column;align-items:flex-start;gap:9px;}
+    .state-cell .label{margin:0;}
+    .state-cell .btn{width:100%;flex:none;}
+    .variant-row{display:flex;gap:12px;flex-wrap:wrap;}
+    .variant-row .btn{flex:none;min-width:130px;}
+
+    /* Form controls */
+    .field{display:block;margin:0 0 18px;}
+    .field:last-child{margin-bottom:0;}
+    .field > .label{display:block;margin:0 0 9px;}
+    .input,.textarea,.select{width:100%;background:var(--surface-1);border:none;box-shadow:inset 0 0 0 1px var(--hairline);
+      border-radius:var(--r-sm);padding:12px 14px;color:var(--text);font-size:14.5px;font-family:var(--body);line-height:1.5;
+      transition:box-shadow .16s ease,background .16s ease;}
+    .input::placeholder,.textarea::placeholder{color:var(--faint);}
+    .textarea{resize:vertical;min-height:88px;}
+    .input:focus,.textarea:focus,.select:focus,.input.is-focus{outline:none;background:var(--surface-2);
+      box-shadow:inset 0 0 0 1px var(--accent),0 0 0 4px var(--accent-glow);}
+    .input:disabled,.input.is-disabled{opacity:.5;cursor:not-allowed;}
+    .select-wrap{position:relative;}
+    .select{appearance:none;-webkit-appearance:none;padding-right:40px;cursor:pointer;}
+    .select-wrap::after{content:"";position:absolute;right:15px;top:50%;width:9px;height:9px;pointer-events:none;
+      border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:translateY(-70%) rotate(45deg);}
+    .field .help{display:block;font-size:12px;color:var(--muted);margin-top:8px;}
+    .field.error .input{box-shadow:inset 0 0 0 1px var(--danger);}
+    .field.error .help{color:var(--danger);display:flex;align-items:center;gap:6px;}
+    .field.error .help svg{width:13px;height:13px;flex:none;}
+
+    /* Selection controls */
+    .ctrl-list{display:flex;flex-direction:column;gap:16px;}
+    .switch,.check,.radio{display:inline-flex;align-items:center;gap:12px;cursor:pointer;font-size:14px;color:var(--text);}
+    .switch input,.check input,.radio input{position:absolute;opacity:0;width:0;height:0;}
+    .switch .track{width:46px;height:27px;border-radius:999px;background:var(--surface-3);box-shadow:inset 0 0 0 1px var(--hairline);
+      transition:background .18s ease;flex:none;position:relative;}
+    .switch .track::after{content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;
+      background:var(--platinum);transition:transform .18s cubic-bezier(.2,.8,.2,1),background .18s ease;}
+    .switch input:checked + .track{background:var(--accent);box-shadow:none;}
+    .switch input:checked + .track::after{transform:translateX(19px);background:var(--accent-ink);}
+    .check .box,.radio .box{width:21px;height:21px;background:var(--surface-1);box-shadow:inset 0 0 0 1px var(--hairline);
+      display:grid;place-items:center;transition:.16s;flex:none;}
+    .check .box{border-radius:6px;} .radio .box{border-radius:50%;}
+    .check .box svg{width:13px;height:13px;stroke:var(--accent-ink);stroke-width:3;opacity:0;transition:opacity .12s;}
+    .check input:checked + .box{background:var(--accent);box-shadow:none;}
+    .check input:checked + .box svg{opacity:1;}
+    .radio .box::after{content:"";width:9px;height:9px;border-radius:50%;background:var(--accent-ink);opacity:0;transition:opacity .12s;}
+    .radio input:checked + .box{background:var(--accent);box-shadow:none;}
+    .radio input:checked + .box::after{opacity:1;}
+    .switch input:focus-visible + .track,.check input:focus-visible + .box,.radio input:focus-visible + .box{
+      box-shadow:inset 0 0 0 1px var(--accent),0 0 0 4px var(--accent-glow);}
+    .ctrl-list .sub{color:var(--muted);font-size:12px;margin-left:2px;}
+
+    /* Overlay — bottom sheet / modal (static demo) */
+    .modal-demo{position:relative;border-radius:var(--r-md);overflow:hidden;min-height:330px;background:var(--surface-1);
+      box-shadow:inset 0 0 0 1px var(--hairline);}
+    .modal-demo .behind{padding:18px;opacity:.5;}
+    .modal-demo .scrim{position:absolute;inset:0;background:rgba(5,5,6,.55);backdrop-filter:blur(2px);}
+    .modal-demo .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface-2);
+      border-radius:var(--r-lg) var(--r-lg) 0 0;padding:10px 20px 24px;box-shadow:0 -12px 44px rgba(0,0,0,.55);}
+    .sheet .grab{width:38px;height:4px;border-radius:999px;background:var(--surface-3);margin:6px auto 16px;}
+    .sheet h4{font-family:var(--display);font-weight:600;font-size:18px;margin:0 0 6px;}
+    .sheet p{margin:0 0 18px;font-size:13.5px;color:var(--muted);}
+
+    /* Feedback — banners (icon + colour, not colour alone) + toast */
+    .banner{display:flex;gap:12px;align-items:flex-start;background:var(--surface-1);border-radius:var(--r-sm);
+      padding:13px 15px;box-shadow:inset 0 0 0 1px var(--hairline);border-left:2px solid var(--accent);}
+    .banner + .banner{margin-top:11px;}
+    .banner .b-ic{width:18px;height:18px;flex:none;margin-top:1px;}
+    .banner b{font-size:13.5px;display:block;margin-bottom:2px;color:var(--text);}
+    .banner p{margin:0;font-size:13px;color:var(--muted);}
+    .banner.success{border-left-color:var(--success);} .banner.success .b-ic{color:var(--success);}
+    .banner.warn{border-left-color:var(--warn);} .banner.warn .b-ic{color:var(--warn);}
+    .banner.danger{border-left-color:var(--danger);} .banner.danger .b-ic{color:var(--danger);}
+    .banner.info{border-left-color:var(--accent);} .banner.info .b-ic{color:var(--accent);}
+    .toast{display:inline-flex;align-items:center;gap:10px;background:var(--surface-3);color:var(--text);
+      border-radius:999px;padding:11px 18px;box-shadow:var(--shadow-card);font-size:13.5px;font-weight:500;}
+    .toast .t-ic{width:16px;height:16px;color:var(--success);flex:none;}
+
     @media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important;} }
   </style>
 </head>
-<body>
+<body data-accent="A" data-font="A">
 
   <div class="wrap">
     <header class="page-head">
@@ -442,8 +569,9 @@
     <!-- ============================ LIVE PREVIEW ============================ -->
     <section class="section">
       <div class="section-head"><span class="num">03</span><h2>Live preview</h2></div>
-      <p class="section-note">Pick an accent and a font, and the phone updates. This is the real Today screen plus an
-      empty state — including the bottom nav, session pills, segmented control and stat block.</p>
+      <p class="section-note">Pick an accent and a font, and the phone updates — <strong>and so does the whole reference
+      library below</strong> (sections 05–10). This is the real Today screen plus an empty state — including the bottom nav,
+      session pills, segmented control and stat block.</p>
 
       <div class="live-grid">
         <!-- Controls -->
@@ -601,7 +729,232 @@
       </div>
     </section>
 
-    <p class="foot">Self-contained chooser · served at <code>/styleguide/</code> · the live app is untouched.</p>
+    <div class="divider"></div>
+
+    <!-- ====================== REFERENCE LIBRARY ====================== -->
+    <div class="lib-banner">
+      <span class="dot"></span>
+      Everything below reflects your current pick — change the accent or font in the
+      <b>live preview</b> above and these components re-theme too.
+    </div>
+
+    <!-- ============================ TYPE SCALE ============================ -->
+    <section class="section">
+      <div class="section-head"><span class="num">05</span><h2>Type scale</h2></div>
+      <p class="section-note">Five roles. Display carries the wordmark, headings and big metrics (your chosen display font);
+      body, label and helper text stay a system humanist sans. Metrics are tabular so digits don’t jitter.</p>
+      <div class="panel">
+        <div class="scale">
+          <div class="scale-row">
+            <div class="sr-meta"><div class="sr-name">Display</div><div class="sr-spec">27 / 600 · -0.015em</div></div>
+            <div class="sr-sample s-display">Tempo Intervals</div>
+          </div>
+          <div class="scale-row">
+            <div class="sr-meta"><div class="sr-name">Heading</div><div class="sr-spec">19 / 600 · -0.01em</div></div>
+            <div class="sr-sample s-h">Build phase · Week 6</div>
+          </div>
+          <div class="scale-row">
+            <div class="sr-meta"><div class="sr-name">Body</div><div class="sr-spec">14.5 / 1.55</div></div>
+            <div class="sr-sample s-body">Six 800m reps at 5k pace with 90&nbsp;seconds of float recovery between each. Hold even splits across the set.</div>
+          </div>
+          <div class="scale-row">
+            <div class="sr-meta"><div class="sr-name">Label</div><div class="sr-spec">11 · caps · .18em</div></div>
+            <div class="sr-sample s-label">Today · Live now</div>
+          </div>
+          <div class="scale-row">
+            <div class="sr-meta"><div class="sr-name">Metric</div><div class="sr-spec">34 / 700 · tabular</div></div>
+            <div class="sr-sample s-metric">12.84<span style="font-size:18px;color:var(--muted);font-weight:500">s</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ============================ SPACE + RADII ============================ -->
+    <section class="section">
+      <div class="section-head"><span class="num">06</span><h2>Spacing &amp; radii</h2></div>
+      <p class="section-note">A 4-based spacing scale and three corner radii. Screen padding is 20; sections get generous
+      vertical rhythm.</p>
+      <div class="panel-grid">
+        <div class="panel">
+          <span class="label">Spacing — 4-based</span>
+          <div class="space-list">
+            <div class="space-item"><span class="sp-val">4 px</span><span class="sp-bar" style="width:4px"></span></div>
+            <div class="space-item"><span class="sp-val">8 px</span><span class="sp-bar" style="width:8px"></span></div>
+            <div class="space-item"><span class="sp-val">12 px</span><span class="sp-bar" style="width:12px"></span></div>
+            <div class="space-item"><span class="sp-val">16 px</span><span class="sp-bar" style="width:16px"></span></div>
+            <div class="space-item"><span class="sp-val">20 px</span><span class="sp-bar" style="width:20px"></span></div>
+            <div class="space-item"><span class="sp-val">24 px</span><span class="sp-bar" style="width:24px"></span></div>
+            <div class="space-item"><span class="sp-val">32 px</span><span class="sp-bar" style="width:32px"></span></div>
+            <div class="space-item"><span class="sp-val">40 px</span><span class="sp-bar" style="width:40px"></span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <span class="label">Radii</span>
+          <div class="radii">
+            <div class="rd sm">sm · 12</div>
+            <div class="rd md">md · 16</div>
+            <div class="rd lg">lg · 22</div>
+          </div>
+          <p class="section-note" style="margin:22px 0 0">sm = controls &amp; blocks · md = cards &amp; stats · lg = hero cards &amp; sheets.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ============================ BUTTONS ============================ -->
+    <section class="section">
+      <div class="section-head"><span class="num">07</span><h2>Buttons &amp; states</h2></div>
+      <p class="section-note">Primary is the one accent fill on screen (+ soft glow). Ghost uses a hairline; danger is reserved
+      for destructive actions. Below the variants, the full interaction-state matrix for the primary button.</p>
+
+      <div class="panel">
+        <span class="label">Variants</span>
+        <div class="variant-row">
+          <button class="btn btn-primary">Primary</button>
+          <button class="btn btn-ghost">Ghost</button>
+          <button class="btn btn-danger">Delete</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <span class="label">Primary — interaction states</span>
+        <div class="state-grid">
+          <div class="state-cell"><span class="label">Default</span><button class="btn btn-primary">Mark done</button></div>
+          <div class="state-cell"><span class="label">Hover</span><button class="btn btn-primary is-hover">Mark done</button></div>
+          <div class="state-cell"><span class="label">Active</span><button class="btn btn-primary is-active">Mark done</button></div>
+          <div class="state-cell"><span class="label">Focus</span><button class="btn btn-primary is-focus">Mark done</button></div>
+          <div class="state-cell"><span class="label">Disabled</span><button class="btn btn-primary is-disabled">Mark done</button></div>
+        </div>
+        <p class="section-note" style="margin:20px 0 0">Hover/active/focus are forced here for display; the real buttons respond
+        to genuine <code>:hover</code>, <code>:active</code> and <code>:focus-visible</code> too.</p>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ============================ FORM CONTROLS ============================ -->
+    <section class="section">
+      <div class="section-head"><span class="num">08</span><h2>Form controls</h2></div>
+      <p class="section-note">Inputs sit on <code>surface-1</code> with a hairline, not a hard border. Focus lifts the surface
+      and adds an accent ring; errors are stated in words + icon, never colour alone.</p>
+      <div class="panel-grid">
+        <div class="panel">
+          <span class="label">Inputs</span>
+          <label class="field">
+            <span class="label">Session name</span>
+            <input class="input" type="text" value="Tempo Intervals" />
+          </label>
+          <label class="field">
+            <span class="label">Notes</span>
+            <textarea class="textarea" placeholder="How did it feel? Splits, RPE, niggles…"></textarea>
+            <span class="help">Optional — appears on the session’s history card.</span>
+          </label>
+          <label class="field">
+            <span class="label">Phase</span>
+            <div class="select-wrap">
+              <select class="select">
+                <option>Base</option><option selected>Build</option><option>Peak</option><option>Taper</option>
+              </select>
+            </div>
+          </label>
+        </div>
+        <div class="panel">
+          <span class="label">Focus, error &amp; disabled</span>
+          <label class="field">
+            <span class="label">Focused</span>
+            <input class="input is-focus" type="text" value="12 × 200m" />
+          </label>
+          <label class="field error">
+            <span class="label">Target time</span>
+            <input class="input" type="text" value="banana" />
+            <span class="help"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>Enter a time like 0:32 or 1:48.</span>
+          </label>
+          <label class="field">
+            <span class="label">Athlete (locked)</span>
+            <input class="input is-disabled" type="text" value="Self" disabled />
+            <span class="help">Multi-athlete is coming later — locked to “Self” for now.</span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ============================ SELECTION CONTROLS ============================ -->
+    <section class="section">
+      <div class="section-head"><span class="num">09</span><h2>Selection controls</h2></div>
+      <p class="section-note">Switches, checkboxes and radios. The accent appears only when a control is on — everything off
+      stays neutral.</p>
+      <div class="panel-grid">
+        <div class="panel">
+          <span class="label">Switches</span>
+          <div class="ctrl-list">
+            <label class="switch"><input type="checkbox" checked /><span class="track"></span><span>Sync to cloud <span class="sub">on</span></span></label>
+            <label class="switch"><input type="checkbox" /><span class="track"></span><span>Rest-day reminders <span class="sub">off</span></span></label>
+          </div>
+        </div>
+        <div class="panel">
+          <span class="label">Checkboxes &amp; radios</span>
+          <div class="ctrl-list">
+            <label class="check"><input type="checkbox" checked /><span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg></span><span>Warm-up complete</span></label>
+            <label class="check"><input type="checkbox" /><span class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg></span><span>Cool-down complete</span></label>
+            <label class="radio"><input type="radio" name="unit" checked /><span class="box"></span><span>Metric (km)</span></label>
+            <label class="radio"><input type="radio" name="unit" /><span class="box"></span><span>Imperial (mi)</span></label>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <!-- ============================ OVERLAYS + FEEDBACK ============================ -->
+    <section class="section">
+      <div class="section-head"><span class="num">10</span><h2>Overlays &amp; feedback</h2></div>
+      <p class="section-note">The bottom sheet is the app’s one modal pattern. Status messages pair an icon with colour so
+      they read without relying on hue, then a transient toast confirms quick actions.</p>
+      <div class="panel-grid">
+        <div class="panel">
+          <span class="label">Bottom sheet</span>
+          <div class="modal-demo">
+            <div class="behind">
+              <div class="s-h" style="margin-bottom:8px">Settings</div>
+              <p class="s-body" style="color:var(--muted)">Account, sync, units, export…</p>
+            </div>
+            <div class="scrim"></div>
+            <div class="sheet">
+              <div class="grab"></div>
+              <h4>Log session</h4>
+              <p>Record what you actually did — kept separate from the plan.</p>
+              <div class="btn-row">
+                <button class="btn btn-primary">Save</button>
+                <button class="btn btn-ghost">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <span class="label">Status banners &amp; toast</span>
+          <div class="banner success">
+            <svg class="b-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+            <div><b>Synced</b><p>All sessions saved to the cloud.</p></div>
+          </div>
+          <div class="banner warn">
+            <svg class="b-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.6L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+            <div><b>Offline</b><p>Changes are saved locally and will sync when you’re back online.</p></div>
+          </div>
+          <div class="banner danger">
+            <svg class="b-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+            <div><b>Sync failed</b><p>We couldn’t reach the server. Retrying automatically.</p></div>
+          </div>
+          <div style="margin-top:18px"><span class="toast"><svg class="t-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>Session logged</span></div>
+        </div>
+      </div>
+    </section>
+
+    <p class="foot">Self-contained chooser + reference · served at <code>/styleguide/</code> · the live app is untouched.</p>
   </div>
 
   <script>
@@ -621,6 +974,7 @@
         var btn = e.target.closest('[data-accent-pick]'); if(!btn) return;
         var v = btn.getAttribute('data-accent-pick');
         phone.setAttribute('data-accent', v);
+        document.body.setAttribute('data-accent', v);   // re-theme the reference library too
         setActive(this, 'data-accent-pick', v);
         document.getElementById('ro-accent').textContent = accentNames[v];
         document.getElementById('ro-hex').textContent = accentHex[v];
@@ -630,6 +984,7 @@
         var btn = e.target.closest('[data-font-pick]'); if(!btn) return;
         var v = btn.getAttribute('data-font-pick');
         phone.setAttribute('data-font', v);
+        document.body.setAttribute('data-font', v);      // re-theme the reference library too
         setActive(this, 'data-font-pick', v);
         document.getElementById('ro-font').textContent = fontNames[v];
       });
