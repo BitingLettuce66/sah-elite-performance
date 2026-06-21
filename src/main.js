@@ -34,10 +34,21 @@ function announce(msg){
   const el = $('#sr-status'); if(!el) return;
   el.textContent = ''; requestAnimationFrame(() => { el.textContent = msg; });
 }
+// Surface a persistence failure instead of swallowing it to the console — a write
+// that didn't save otherwise looks identical to one that did.
+function notePersistError(e){
+  console.error('Save failed', e);
+  showToast('Couldn’t save your last change — it may not be stored.', null, null, 5000);
+}
 // Prompt to refresh when a new version is deployed (instead of a silent reload).
 const updateSW = registerSW({
   onNeedRefresh(){ showToast('New version available', 'Refresh', ()=>updateSW(true)); },
   onOfflineReady(){ showToast('Ready to use offline', null, null, 2600); },
+  onRegisteredSW(swUrl, r){
+    // Installed PWAs can stay open for days — poll hourly for a new deploy so a
+    // user isn't stranded on a stale version (the toast above prompts the refresh).
+    if(r) setInterval(() => r.update().catch(()=>{}), 60 * 60 * 1000);
+  },
 });
 // state.logs is an in-memory cache of all logs, loaded once from IndexedDB on
 // boot so render code can read them synchronously.
@@ -79,12 +90,12 @@ function setLog(id, v) {
     if (se) log.prescribedSnapshot = snapshotOf(se);
   }
   state.logs[id] = log;
-  putLog(log).catch(e => console.error('Log save failed', e));
+  putLog(log).catch(notePersistError);
 }
 // Remove a log from the cache and IndexedDB.
 function delLog(id){
   delete state.logs[id];
-  deleteLog(id).catch(e => console.error('Log delete failed', e));
+  deleteLog(id).catch(notePersistError);
 }
 // One-tap completion: mark done without opening the full sheet.
 function quickDone(id){ const se=byId(id); setLog(id, { done:true, date: se?se.date:todayISO() }); announce('Session marked done'); render(); }
@@ -372,7 +383,7 @@ function openBodyweight(){
   $('#x-save').onclick=async ()=>{ const date=$('#bw-date').value; const kg=round(Number($('#bw-kg').value),2);
     if(date && kg){ const arr=(state.bodyweight||[]).filter(e=>e.date!==date); arr.push({date,kg});
       arr.sort((a,b)=>a.date.localeCompare(b.date)); state.bodyweight=arr;
-      try{ await putSetting('bw:'+ATHLETE_ID, arr); }catch(e){ console.error('Saving bodyweight failed', e); } }
+      try{ await putSetting('bw:'+ATHLETE_ID, arr); }catch(e){ notePersistError(e); } }
     closeSheet(); render(); };
 }
 // Per-distance season target times (optional), persisted via db.js.
@@ -384,7 +395,7 @@ function openTargets(){
   $('#x-cancel').onclick=closeSheet;
   $('#x-save').onclick=async ()=>{
     const out={}; for(const d of SPRINT_DISTANCES){ const v=$('#tg-'+slug(d)).value.trim(); if(v!=='') out[d]=Number(v); }
-    state.targets=out; try{ await putSetting(targetsKey(), out); }catch(e){ console.error('Saving targets failed', e); }
+    state.targets=out; try{ await putSetting(targetsKey(), out); }catch(e){ notePersistError(e); }
     closeSheet(); render();
   };
 }
@@ -443,7 +454,7 @@ function openWelcome(){
   $('#ob-go').onclick = async () => {
     const v = $('#ob-start').value;
     if(v && v!==cur){ state.assignment = { ...state.assignment, startDate:v };
-      try{ await putSetting('assignment:'+ATHLETE_ID, state.assignment); }catch(e){ console.error('Saving start failed', e); }
+      try{ await putSetting('assignment:'+ATHLETE_ID, state.assignment); }catch(e){ notePersistError(e); }
       materializeDates(); }
     try{ await putSetting(ONBOARDED_KEY(), true); }catch(e){}
     closeSheet(); render();
@@ -569,7 +580,7 @@ function openPlanStart(){
   $('#x-cancel').onclick=closeSheet;
   $('#x-save').onclick=async ()=>{ const v=$('#f-start').value;
     if(v){ state.assignment={ ...state.assignment, startDate:v };
-      try{ await putSetting('assignment:'+ATHLETE_ID, state.assignment); }catch(e){ console.error('Saving plan start failed', e); }
+      try{ await putSetting('assignment:'+ATHLETE_ID, state.assignment); }catch(e){ notePersistError(e); }
       materializeDates(); }
     closeSheet(); render(); };
 }
