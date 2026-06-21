@@ -12,10 +12,8 @@
    Reference: ../Venture-Planning/ai-coach-design.md §5 (contract) + §6 (safety),
    App-Spec.md §10 (architecture guardrails). */
 
-// Session intensity/type tags the engine knows. 'MOD' is part of the AI contract
-// (ai-coach-design §5); the current pill renderer (format.js) styles unknown
-// types as LOW, so a MOD session renders as a LOW pill until a MOD pill style is
-// added — a tracked one-line follow-up, not a blocker (it still renders fine).
+// Session intensity/type tags the engine knows. Each has its own pill in
+// format.js (MOD renders as a soft-accent "MOD" pill).
 export const KNOWN_TYPES = ['HIGH', 'MOD', 'LOW', 'DELOAD', 'TAPER', 'RECOVERY', 'RACE'];
 
 // The high-CNS days the volume guards police.

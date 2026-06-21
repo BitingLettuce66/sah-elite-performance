@@ -120,6 +120,7 @@ html,body{margin:0;background:var(--bg);color:var(--text);
 
 .pill{font-size:10.5px;font-weight:700;letter-spacing:.1em;padding:3px 9px;border-radius:20px;border:1px solid var(--line);}
 .t-high{color:var(--accent-ink);background:var(--accent);border-color:var(--accent);}
+.t-mod{color:var(--accent);background:var(--accent-glow);border-color:var(--accent-dim);}
 .t-deload{color:var(--platinum);background:transparent;border-color:var(--hairline);}
 .t-taper{color:var(--platinum);background:transparent;border-color:var(--hairline);}
 .t-low{color:var(--silver);background:transparent;border-color:var(--line);}
@@ -233,10 +234,18 @@ details p{font-size:13.5px;color:var(--text);line-height:1.55;margin:8px 2px 4px
 .card-hero .callout:first-of-type{margin-top:16px;}
 
 /* Today — one-tap done + details */
-.card-actions{display:flex;gap:10px;margin-top:14px;}
+.card-actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
 .btn-done{flex:1.4;padding:13px;border-radius:var(--radius-sm);border:none;background:var(--accent);
   color:var(--accent-ink);font-size:14px;font-weight:700;letter-spacing:.04em;box-shadow:var(--shadow-glow);}
-.card-actions .btn-log{flex:1;width:auto;margin-top:0;}
+.card-actions .btn-log,.card-actions .btn-regen{flex:1;width:auto;margin-top:0;}
+/* Regenerate-one-session: outlined button (mirrors .btn-log) + before/after compare */
+.btn-regen{padding:13px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:transparent;
+  color:var(--accent);font-size:14px;font-weight:600;letter-spacing:.04em;}
+.btn-regen:active{background:var(--accent-glow);}
+.rg-compare{display:flex;gap:12px;margin:0 0 14px;}
+.rg-col{flex:1;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px;}
+.rg-h{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+.rg-col .sheet-note{margin:6px 0 0;}
 
 /* Log sheet — delete */
 .btn-delete{width:100%;margin-top:10px;padding:11px;background:transparent;border:none;
