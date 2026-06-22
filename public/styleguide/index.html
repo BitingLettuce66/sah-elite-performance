@@ -226,7 +226,7 @@
     .live-grid{display:grid;grid-template-columns:300px 1fr;gap:40px;align-items:start;}
     @media (max-width:880px){ .live-grid{grid-template-columns:1fr;} }
 
-    .controls{position:sticky;top:24px;}
+    .controls{position:sticky;top:70px;}
     .ctrl-group{margin:0 0 24px;}
     .ctrl-group > .label{display:block;margin:0 0 12px;}
     .choices{display:flex;flex-direction:column;gap:8px;}
@@ -397,10 +397,72 @@
       border-radius:999px;padding:11px 18px;box-shadow:var(--shadow-card);font-size:13.5px;font-weight:500;}
     .toast .t-ic{width:16px;height:16px;color:var(--success);flex:none;}
 
+    /* ===================================================================
+       PAGE POLISH — skip link, in-page section nav, copy affordances,
+       focus rings. These style the styleguide's OWN chrome, not the kit.
+       =================================================================== */
+
+    /* Skip link — first tab stop, hidden until focused */
+    .skip-link{position:absolute;left:12px;top:-60px;z-index:60;background:var(--accent);
+      color:var(--accent-ink);font-weight:600;font-size:13px;padding:10px 16px;border-radius:0 0 10px 10px;
+      box-shadow:var(--shadow-glow);transition:top .16s ease;}
+    .skip-link:focus{top:0;outline:none;}
+
+    /* Sticky in-page section nav (TOC) — horizontally scrollable on narrow screens */
+    .section-nav{position:sticky;top:0;z-index:30;
+      background:rgba(10,10,11,.82);backdrop-filter:blur(12px);
+      border-bottom:1px solid var(--hairline);}
+    .section-nav .nav-scroll{display:flex;gap:6px;overflow-x:auto;padding:10px 24px;
+      max-width:1160px;margin:0 auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+    .section-nav .nav-scroll::-webkit-scrollbar{display:none;}
+    .section-nav a{flex:none;text-decoration:none;color:var(--muted);font-size:12.5px;letter-spacing:.01em;
+      padding:7px 13px;border-radius:999px;white-space:nowrap;
+      transition:color .16s ease,background .16s ease;}
+    .section-nav a:hover{color:var(--text);background:var(--surface-2);}
+    .section-nav a.current{color:var(--accent-ink);background:var(--accent);font-weight:600;}
+
+    /* Anchored sections clear the sticky nav when jumped to */
+    .section{scroll-margin-top:64px;}
+
+    /* Copy affordance — token ramp swatches + hex chips become buttons */
+    button.sw{cursor:pointer;border:none;font:inherit;text-align:left;width:auto;}
+    button.sw:hover{transform:translateY(-2px);}
+    button.sw::after{content:"⧉ copy";position:absolute;right:11px;top:11px;font-size:10px;letter-spacing:.04em;
+      color:var(--muted);opacity:0;transition:opacity .16s ease;}
+    .ramp .sw{position:relative;transition:transform .12s ease,box-shadow .16s ease;}
+    button.sw:hover::after,button.sw:focus-visible::after{opacity:.85;}
+    button.opt-hex{background:none;border:none;font:inherit;cursor:pointer;color:var(--faint);
+      padding:3px 6px;margin-left:auto;border-radius:7px;transition:color .16s ease,background .16s ease;
+      font-variant-numeric:tabular-nums;font-feature-settings:"tnum";letter-spacing:.06em;font-size:11.5px;}
+    button.opt-hex:hover{color:var(--text);background:var(--surface-2);}
+
+    /* Copy confirmation toast (aria-live) */
+    .copy-toast{position:fixed;left:50%;bottom:26px;z-index:70;
+      transform:translateX(-50%) translateY(10px);opacity:0;pointer-events:none;
+      transition:opacity .18s ease,transform .18s ease;}
+    .copy-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+    /* Focus-visible rings on the page's own interactive chrome */
+    .choice:focus-visible{outline:none;border-color:var(--accent);background:var(--surface-2);
+      box-shadow:0 0 0 4px var(--accent-glow);}
+    .section-nav a:focus-visible,button.sw:focus-visible,button.opt-hex:focus-visible,
+    .skip-link:focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-glow);}
+    button.sw:focus-visible{box-shadow:inset 0 0 0 1px var(--hairline),0 0 0 3px var(--accent-glow);}
+
+    /* Tighter gutters on small screens */
+    @media (max-width:560px){
+      .wrap{padding:0 16px;}
+      .section-nav .nav-scroll{padding:9px 16px;}
+      .page-head{padding:40px 0 18px;}
+      .section{padding:30px 0 6px;}
+    }
+
     @media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important;} }
   </style>
 </head>
 <body data-accent="A" data-font="A">
+
+  <a class="skip-link" href="#content">Skip to content</a>
 
   <div class="wrap">
     <header class="page-head">
@@ -413,9 +475,25 @@
     </header>
   </div>
 
+  <!-- In-page section nav (sticky) — scrollspy-highlighted -->
+  <nav class="section-nav" aria-label="Sections">
+    <div class="nav-scroll">
+      <a href="#accent">01 Accent</a>
+      <a href="#font">02 Font</a>
+      <a href="#live">03 Live preview</a>
+      <a href="#tokens">04 Tokens</a>
+      <a href="#type">05 Type</a>
+      <a href="#space">06 Spacing</a>
+      <a href="#buttons">07 Buttons</a>
+      <a href="#forms">08 Forms</a>
+      <a href="#controls">09 Selection</a>
+      <a href="#overlays">10 Overlays</a>
+    </div>
+  </nav>
+
   <!-- ============================ ACCENTS ============================ -->
-  <div class="wrap">
-    <section class="section">
+  <div class="wrap" id="content">
+    <section class="section" id="accent">
       <div class="section-head"><span class="num">01</span><h2>Accent</h2></div>
       <p class="section-note">The accent is reserved for the single primary action and the “today / live” state —
       everywhere else stays neutral. Each column applies a different accent to the same components, so the only thing
@@ -427,7 +505,7 @@
           <div class="opt-head">
             <span class="opt-swatch"></span>
             <span class="opt-id">Accent A<small>Bright ice</small></span>
-            <span class="opt-hex">#8FCBE8</span>
+            <button class="opt-hex" type="button" data-copy="#8FCBE8" aria-label="Copy accent A hex #8FCBE8">#8FCBE8</button>
           </div>
           <div class="card card-hero">
             <p class="hero-eyebrow">Today · Build phase</p>
@@ -457,7 +535,7 @@
           <div class="opt-head">
             <span class="opt-swatch"></span>
             <span class="opt-id">Accent B<small>Deeper blue</small></span>
-            <span class="opt-hex">#6FB7E0</span>
+            <button class="opt-hex" type="button" data-copy="#6FB7E0" aria-label="Copy accent B hex #6FB7E0">#6FB7E0</button>
           </div>
           <div class="card card-hero">
             <p class="hero-eyebrow">Today · Build phase</p>
@@ -487,7 +565,7 @@
           <div class="opt-head">
             <span class="opt-swatch"></span>
             <span class="opt-id">Accent C<small>Near-platinum</small></span>
-            <span class="opt-hex">#A9B4C2</span>
+            <button class="opt-hex" type="button" data-copy="#A9B4C2" aria-label="Copy accent C hex #A9B4C2">#A9B4C2</button>
           </div>
           <div class="card card-hero">
             <p class="hero-eyebrow">Today · Build phase</p>
@@ -517,7 +595,7 @@
     <div class="divider"></div>
 
     <!-- ============================ FONTS ============================ -->
-    <section class="section">
+    <section class="section" id="font">
       <div class="section-head"><span class="num">02</span><h2>Display font</h2></div>
       <p class="section-note">The display font carries the wordmark, headings and big metrics — body text stays a
       system humanist sans in every case. Look at the wordmark, the title, the numerals and the “g / a / 1” shapes.</p>
@@ -567,7 +645,7 @@
     <div class="divider"></div>
 
     <!-- ============================ LIVE PREVIEW ============================ -->
-    <section class="section">
+    <section class="section" id="live">
       <div class="section-head"><span class="num">03</span><h2>Live preview</h2></div>
       <p class="section-note">Pick an accent and a font, and the phone updates — <strong>and so does the whole reference
       library below</strong> (sections 05–10). This is the real Today screen plus an empty state — including the bottom nav,
@@ -578,39 +656,39 @@
         <div class="controls">
           <div class="ctrl-group">
             <span class="label">Accent</span>
-            <div class="choices" id="accent-choices">
-              <button class="choice on" data-accent-pick="A">
+            <div class="choices" id="accent-choices" role="group" aria-label="Accent">
+              <button class="choice on" type="button" data-accent-pick="A" aria-pressed="true">
                 <span class="dot" style="background:#8FCBE8"></span>
                 <span><span class="ch-name">A · Bright ice</span><span class="ch-desc">#8FCBE8</span></span>
-                <span class="tick">✓</span>
+                <span class="tick" aria-hidden="true">✓</span>
               </button>
-              <button class="choice" data-accent-pick="B">
+              <button class="choice" type="button" data-accent-pick="B" aria-pressed="false">
                 <span class="dot" style="background:#6FB7E0"></span>
                 <span><span class="ch-name">B · Deeper</span><span class="ch-desc">#6FB7E0</span></span>
-                <span class="tick">✓</span>
+                <span class="tick" aria-hidden="true">✓</span>
               </button>
-              <button class="choice" data-accent-pick="C">
+              <button class="choice" type="button" data-accent-pick="C" aria-pressed="false">
                 <span class="dot" style="background:#A9B4C2"></span>
                 <span><span class="ch-name">C · Near-platinum</span><span class="ch-desc">#A9B4C2</span></span>
-                <span class="tick">✓</span>
+                <span class="tick" aria-hidden="true">✓</span>
               </button>
             </div>
           </div>
 
           <div class="ctrl-group">
             <span class="label">Display font</span>
-            <div class="choices" id="font-choices">
-              <button class="choice font-choice on" data-font-pick="A" style="font-family:'Space Grotesk',sans-serif">
+            <div class="choices" id="font-choices" role="group" aria-label="Display font">
+              <button class="choice font-choice on" type="button" data-font-pick="A" aria-pressed="true" style="font-family:'Space Grotesk',sans-serif">
                 <span><span class="ch-name">Space Grotesk</span><span class="ch-desc" style="font-family:var(--body)">A · geometric / technical</span></span>
-                <span class="tick">✓</span>
+                <span class="tick" aria-hidden="true">✓</span>
               </button>
-              <button class="choice font-choice" data-font-pick="B" style="font-family:'Hanken Grotesk',sans-serif">
+              <button class="choice font-choice" type="button" data-font-pick="B" aria-pressed="false" style="font-family:'Hanken Grotesk',sans-serif">
                 <span><span class="ch-name">Hanken Grotesk</span><span class="ch-desc" style="font-family:var(--body)">B · warm / friendly</span></span>
-                <span class="tick">✓</span>
+                <span class="tick" aria-hidden="true">✓</span>
               </button>
-              <button class="choice font-choice" data-font-pick="C" style="font-family:'Geist',sans-serif">
+              <button class="choice font-choice" type="button" data-font-pick="C" aria-pressed="false" style="font-family:'Geist',sans-serif">
                 <span><span class="ch-name">Geist</span><span class="ch-desc" style="font-family:var(--body)">C · neutral / Swiss</span></span>
-                <span class="tick">✓</span>
+                <span class="tick" aria-hidden="true">✓</span>
               </button>
             </div>
           </div>
@@ -697,10 +775,10 @@
             </div>
             <!-- Bottom nav -->
             <nav class="tabbar">
-              <button class="on"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Today</button>
-              <button><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></svg>History</button>
-              <button><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 20v-5M12 20v-9M18 20V8"/></svg>Progress</button>
-              <button><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M8 7l4-4 4 4M5 12v7a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-7"/></svg>Share</button>
+              <button class="on"><svg class="ic" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Today</button>
+              <button><svg class="ic" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></svg>History</button>
+              <button><svg class="ic" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 20v-5M12 20v-9M18 20V8"/></svg>Progress</button>
+              <button><svg class="ic" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M8 7l4-4 4 4M5 12v7a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-7"/></svg>Share</button>
             </nav>
           </div>
           <p class="reduced-note">Tip: this combination is what would ship. Tell Claude e.g. “Accent B + Geist” and it’ll wire it into the live app.</p>
@@ -711,21 +789,22 @@
     <div class="divider"></div>
 
     <!-- ============================ TOKEN RAMP ============================ -->
-    <section class="section">
+    <section class="section" id="tokens">
       <div class="section-head"><span class="num">04</span><h2>Token ramp</h2></div>
-      <p class="section-note">The shared cool-neutral foundation every option sits on (unchanged across choices).</p>
+      <p class="section-note">The shared cool-neutral foundation every option sits on (unchanged across choices).
+      <strong>Click any swatch to copy its hex.</strong></p>
       <div class="ramp">
-        <div class="sw" style="background:#0A0A0B"><b>bg</b><span>#0A0A0B</span></div>
-        <div class="sw" style="background:#131316"><b>surface-1</b><span>#131316</span></div>
-        <div class="sw" style="background:#1A1A20"><b>surface-2</b><span>#1A1A20</span></div>
-        <div class="sw" style="background:#20212B"><b>surface-3</b><span>#20212B</span></div>
-        <div class="sw" style="background:#1A1A20;color:#F2F4F7"><b>text</b><span>#F2F4F7</span></div>
-        <div class="sw" style="background:#1A1A20;color:#9A9CA3"><b>muted</b><span>#9A9CA3</span></div>
-        <div class="sw" style="background:#1A1A20;color:#6A6C72"><b>faint</b><span>#6A6C72</span></div>
-        <div class="sw" style="background:#C9CDD6;color:#06223A"><b>platinum</b><span>#C9CDD6</span></div>
-        <div class="sw" style="background:#5DAE7E;color:#06223A"><b>success</b><span>#5DAE7E</span></div>
-        <div class="sw" style="background:#E0B15A;color:#06223A"><b>warn</b><span>#E0B15A</span></div>
-        <div class="sw" style="background:#C0563E;color:#fff"><b>danger</b><span>#C0563E</span></div>
+        <button type="button" class="sw" data-copy="#0A0A0B" aria-label="Copy bg #0A0A0B" style="background:#0A0A0B;color:#F2F4F7"><b>bg</b><span>#0A0A0B</span></button>
+        <button type="button" class="sw" data-copy="#131316" aria-label="Copy surface-1 #131316" style="background:#131316;color:#F2F4F7"><b>surface-1</b><span>#131316</span></button>
+        <button type="button" class="sw" data-copy="#1A1A20" aria-label="Copy surface-2 #1A1A20" style="background:#1A1A20;color:#F2F4F7"><b>surface-2</b><span>#1A1A20</span></button>
+        <button type="button" class="sw" data-copy="#20212B" aria-label="Copy surface-3 #20212B" style="background:#20212B;color:#F2F4F7"><b>surface-3</b><span>#20212B</span></button>
+        <button type="button" class="sw" data-copy="#F2F4F7" aria-label="Copy text #F2F4F7" style="background:#1A1A20;color:#F2F4F7"><b>text</b><span>#F2F4F7</span></button>
+        <button type="button" class="sw" data-copy="#9A9CA3" aria-label="Copy muted #9A9CA3" style="background:#1A1A20;color:#9A9CA3"><b>muted</b><span>#9A9CA3</span></button>
+        <button type="button" class="sw" data-copy="#6A6C72" aria-label="Copy faint #6A6C72" style="background:#1A1A20;color:#6A6C72"><b>faint</b><span>#6A6C72</span></button>
+        <button type="button" class="sw" data-copy="#C9CDD6" aria-label="Copy platinum #C9CDD6" style="background:#C9CDD6;color:#06223A"><b>platinum</b><span>#C9CDD6</span></button>
+        <button type="button" class="sw" data-copy="#5DAE7E" aria-label="Copy success #5DAE7E" style="background:#5DAE7E;color:#06223A"><b>success</b><span>#5DAE7E</span></button>
+        <button type="button" class="sw" data-copy="#E0B15A" aria-label="Copy warn #E0B15A" style="background:#E0B15A;color:#06223A"><b>warn</b><span>#E0B15A</span></button>
+        <button type="button" class="sw" data-copy="#C0563E" aria-label="Copy danger #C0563E" style="background:#C0563E;color:#fff"><b>danger</b><span>#C0563E</span></button>
       </div>
     </section>
 
@@ -739,7 +818,7 @@
     </div>
 
     <!-- ============================ TYPE SCALE ============================ -->
-    <section class="section">
+    <section class="section" id="type">
       <div class="section-head"><span class="num">05</span><h2>Type scale</h2></div>
       <p class="section-note">Five roles. Display carries the wordmark, headings and big metrics (your chosen display font);
       body, label and helper text stay a system humanist sans. Metrics are tabular so digits don’t jitter.</p>
@@ -772,7 +851,7 @@
     <div class="divider"></div>
 
     <!-- ============================ SPACE + RADII ============================ -->
-    <section class="section">
+    <section class="section" id="space">
       <div class="section-head"><span class="num">06</span><h2>Spacing &amp; radii</h2></div>
       <p class="section-note">A 4-based spacing scale and three corner radii. Screen padding is 20; sections get generous
       vertical rhythm.</p>
@@ -805,7 +884,7 @@
     <div class="divider"></div>
 
     <!-- ============================ BUTTONS ============================ -->
-    <section class="section">
+    <section class="section" id="buttons">
       <div class="section-head"><span class="num">07</span><h2>Buttons &amp; states</h2></div>
       <p class="section-note">Primary is the one accent fill on screen (+ soft glow). Ghost uses a hairline; danger is reserved
       for destructive actions. Below the variants, the full interaction-state matrix for the primary button.</p>
@@ -836,7 +915,7 @@
     <div class="divider"></div>
 
     <!-- ============================ FORM CONTROLS ============================ -->
-    <section class="section">
+    <section class="section" id="forms">
       <div class="section-head"><span class="num">08</span><h2>Form controls</h2></div>
       <p class="section-note">Inputs sit on <code>surface-1</code> with a hairline, not a hard border. Focus lifts the surface
       and adds an accent ring; errors are stated in words + icon, never colour alone.</p>
@@ -884,7 +963,7 @@
     <div class="divider"></div>
 
     <!-- ============================ SELECTION CONTROLS ============================ -->
-    <section class="section">
+    <section class="section" id="controls">
       <div class="section-head"><span class="num">09</span><h2>Selection controls</h2></div>
       <p class="section-note">Switches, checkboxes and radios. The accent appears only when a control is on — everything off
       stays neutral.</p>
@@ -911,7 +990,7 @@
     <div class="divider"></div>
 
     <!-- ============================ OVERLAYS + FEEDBACK ============================ -->
-    <section class="section">
+    <section class="section" id="overlays">
       <div class="section-head"><span class="num">10</span><h2>Overlays &amp; feedback</h2></div>
       <p class="section-note">The bottom sheet is the app’s one modal pattern. Status messages pair an icon with colour so
       they read without relying on hue, then a transient toast confirms quick actions.</p>
@@ -957,6 +1036,11 @@
     <p class="foot">Self-contained chooser + reference · served at <code>/styleguide/</code> · the live app is untouched.</p>
   </div>
 
+  <!-- Copy confirmation — announced to screen readers -->
+  <div class="copy-toast" id="copy-toast" role="status" aria-live="polite">
+    <span class="toast"><svg class="t-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg><span id="copy-toast-text"></span></span>
+  </div>
+
   <script>
     (function(){
       var phone   = document.getElementById('phone');
@@ -966,7 +1050,9 @@
 
       function setActive(container, attr, value){
         container.querySelectorAll('button').forEach(function(b){
-          b.classList.toggle('on', b.getAttribute(attr) === value);
+          var on = b.getAttribute(attr) === value;
+          b.classList.toggle('on', on);
+          b.setAttribute('aria-pressed', on ? 'true' : 'false');
         });
       }
 
@@ -988,6 +1074,51 @@
         setActive(this, 'data-font-pick', v);
         document.getElementById('ro-font').textContent = fontNames[v];
       });
+
+      /* ---- Click-to-copy any [data-copy] (token swatches, hex chips) ---- */
+      var toast = document.getElementById('copy-toast');
+      var toastText = document.getElementById('copy-toast-text');
+      var toastTimer;
+      function showToast(msg){
+        toastText.textContent = msg;
+        toast.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function(){ toast.classList.remove('show'); }, 1600);
+      }
+      function fallbackCopy(text){
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.setAttribute('readonly','');
+        ta.style.position = 'absolute'; ta.style.left = '-9999px';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch(e){}
+        document.body.removeChild(ta);
+      }
+      document.addEventListener('click', function(e){
+        var el = e.target.closest('[data-copy]'); if(!el) return;
+        var val = el.getAttribute('data-copy');
+        var done = function(){ showToast('Copied ' + val); };
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(val).then(done, function(){ fallbackCopy(val); done(); });
+        } else { fallbackCopy(val); done(); }
+      });
+
+      /* ---- Scrollspy: highlight the section nav link in view ---- */
+      var navLinks = Array.prototype.slice.call(document.querySelectorAll('.section-nav a'));
+      var linkFor = {};
+      navLinks.forEach(function(a){ linkFor[a.getAttribute('href').slice(1)] = a; });
+      if('IntersectionObserver' in window){
+        var obs = new IntersectionObserver(function(entries){
+          entries.forEach(function(en){
+            if(!en.isIntersecting) return;
+            navLinks.forEach(function(a){ a.classList.remove('current'); a.removeAttribute('aria-current'); });
+            var a = linkFor[en.target.id];
+            if(a){ a.classList.add('current'); a.setAttribute('aria-current','true'); }
+          });
+        }, { rootMargin: '-45% 0px -50% 0px' });
+        Object.keys(linkFor).forEach(function(id){
+          var sec = document.getElementById(id); if(sec) obs.observe(sec);
+        });
+      }
     })();
   </script>
 </body>
