@@ -457,10 +457,51 @@
       .section{padding:30px 0 6px;}
     }
 
+    /* ===================================================================
+       RECOMMENDATION + PHONE FLIP BAR (added 23 Jun — finish the chooser)
+       =================================================================== */
+    .rec-callout{display:flex;gap:16px;align-items:flex-start;background:var(--surface-1);
+      border-radius:var(--r-md);padding:18px 20px;margin:6px 0 0;
+      box-shadow:inset 0 0 0 1px var(--hairline);border-left:2px solid var(--accent);}
+    .rec-callout .rec-star{flex:none;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;
+      background:var(--accent);color:var(--accent-ink);font-size:17px;box-shadow:var(--shadow-glow);}
+    .rec-callout h3{font-family:var(--display);font-weight:600;font-size:16px;margin:1px 0 6px;letter-spacing:-.005em;}
+    .rec-callout h3 b{color:var(--accent);font-weight:600;}
+    .rec-callout p{margin:0;font-size:13.5px;line-height:1.6;color:var(--muted);max-width:760px;}
+    .rec-callout p strong{color:var(--text);font-weight:600;}
+
+    /* ★ Recommended chip on the recommended choice rows */
+    .rec-badge{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+      color:var(--accent-ink);background:var(--accent);border-radius:999px;padding:2px 7px;margin-left:8px;
+      vertical-align:middle;font-family:var(--body);}
+
+    /* Floating one-tap flip bar — only on narrow (phone) screens, where the
+       sidebar controls scroll out of view. Fixed above the bottom edge. */
+    .flip-bar{display:none;}
+    @media (max-width:880px){
+      .flip-bar{display:flex;position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:50;
+        gap:10px;align-items:center;background:rgba(20,20,23,.92);backdrop-filter:blur(14px);
+        border-radius:999px;padding:7px 12px;box-shadow:0 10px 34px rgba(0,0,0,.55),inset 0 0 0 1px var(--hairline);
+        max-width:calc(100vw - 20px);overflow:hidden;}
+      .flip-bar .fb-group{display:flex;gap:6px;align-items:center;}
+      .flip-bar .fb-label{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);}
+      @media (max-width:400px){ .flip-bar .fb-label{display:none;} .flip-bar{gap:8px;} }
+      .flip-bar .fb-sep{width:1px;height:24px;background:var(--hairline);flex:none;}
+      .flip-bar button{border:none;cursor:pointer;font-family:var(--body);color:var(--muted);
+        background:transparent;border-radius:50%;width:30px;height:30px;display:grid;place-items:center;
+        font-size:12.5px;font-weight:700;padding:0;transition:transform .12s ease;}
+      .flip-bar button:active{transform:scale(.88);}
+      .flip-bar .fb-accent button .fb-dot{width:21px;height:21px;border-radius:50%;
+        box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);display:block;}
+      .flip-bar .fb-accent button.on{box-shadow:0 0 0 2px var(--accent),0 0 0 5px var(--accent-glow);}
+      .flip-bar .fb-font button.on{color:var(--accent-ink);background:var(--accent);}
+      .flip-bar button:focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-glow);}
+    }
+
     @media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important;} }
   </style>
 </head>
-<body data-accent="A" data-font="A">
+<body data-accent="A" data-font="C">
 
   <a class="skip-link" href="#content">Skip to content</a>
 
@@ -471,8 +512,22 @@
       <p class="page-sub">A chooser, not a verdict. Below are the <strong>three accent options</strong> and
       <strong>three display-font options</strong> from <code>DESIGN-DIRECTION.md</code>, applied to a real component set.
       Compare them side-by-side, then use the live preview at the bottom to try a combination and pick your favourite.
-      Nothing here touches the live app.</p>
+      On a phone, a one-tap <strong>Accent / Font</strong> bar floats at the bottom so you can flip live. Nothing here touches the live app.</p>
     </header>
+
+    <!-- Recommendation (added 23 Jun) — a default to start from, not a lock-in -->
+    <div class="rec-callout">
+      <span class="rec-star" aria-hidden="true">★</span>
+      <div>
+        <h3>Recommended to start: <b>Accent A · Bright ice</b> + <b>Geist</b></h3>
+        <p><strong>Why:</strong> this is also what the live app already ships, so choosing it changes nothing and locks in a
+        look that's proven on your phone. Ice-blue A is bright enough to read clearly as the “today / live” signal against the
+        dark cool-neutral background without tipping into neon — that restraint is the whole direction. Geist is the quietest
+        and most precise of the three display fonts (Swiss, software-grade), which keeps the big metrics razor-legible and lets
+        the numbers, not the typeface, do the talking. <strong>This page opens on that combo — flip any option to compare;
+        nothing is locked, the final pick is a call we make together.</strong></p>
+      </div>
+    </div>
   </div>
 
   <!-- In-page section nav (sticky) — scrollspy-highlighted -->
@@ -659,7 +714,7 @@
             <div class="choices" id="accent-choices" role="group" aria-label="Accent">
               <button class="choice on" type="button" data-accent-pick="A" aria-pressed="true">
                 <span class="dot" style="background:#8FCBE8"></span>
-                <span><span class="ch-name">A · Bright ice</span><span class="ch-desc">#8FCBE8</span></span>
+                <span><span class="ch-name">A · Bright ice<span class="rec-badge">★ Rec</span></span><span class="ch-desc">#8FCBE8</span></span>
                 <span class="tick" aria-hidden="true">✓</span>
               </button>
               <button class="choice" type="button" data-accent-pick="B" aria-pressed="false">
@@ -678,7 +733,7 @@
           <div class="ctrl-group">
             <span class="label">Display font</span>
             <div class="choices" id="font-choices" role="group" aria-label="Display font">
-              <button class="choice font-choice on" type="button" data-font-pick="A" aria-pressed="true" style="font-family:'Space Grotesk',sans-serif">
+              <button class="choice font-choice" type="button" data-font-pick="A" aria-pressed="false" style="font-family:'Space Grotesk',sans-serif">
                 <span><span class="ch-name">Space Grotesk</span><span class="ch-desc" style="font-family:var(--body)">A · geometric / technical</span></span>
                 <span class="tick" aria-hidden="true">✓</span>
               </button>
@@ -686,8 +741,8 @@
                 <span><span class="ch-name">Hanken Grotesk</span><span class="ch-desc" style="font-family:var(--body)">B · warm / friendly</span></span>
                 <span class="tick" aria-hidden="true">✓</span>
               </button>
-              <button class="choice font-choice" type="button" data-font-pick="C" aria-pressed="false" style="font-family:'Geist',sans-serif">
-                <span><span class="ch-name">Geist</span><span class="ch-desc" style="font-family:var(--body)">C · neutral / Swiss</span></span>
+              <button class="choice font-choice on" type="button" data-font-pick="C" aria-pressed="true" style="font-family:'Geist',sans-serif">
+                <span><span class="ch-name">Geist<span class="rec-badge">★ Rec</span></span><span class="ch-desc" style="font-family:var(--body)">C · neutral / Swiss</span></span>
                 <span class="tick" aria-hidden="true">✓</span>
               </button>
             </div>
@@ -696,13 +751,13 @@
           <div class="readout">
             <span class="label">Your pick</span>
             Accent <span class="pick" id="ro-accent">A · Bright ice</span> <code id="ro-hex">#8FCBE8</code><br>
-            Font <span class="pick" id="ro-font">Space Grotesk</span>
+            Font <span class="pick" id="ro-font">Geist</span>
           </div>
         </div>
 
         <!-- Phone -->
         <div>
-          <div class="phone" id="phone" data-accent="A" data-font="A">
+          <div class="phone" id="phone" data-accent="A" data-font="C">
             <div class="phone-top">
               <div class="phone-avatar">S</div>
               <div class="phone-brand">SAH <span>ELITE</span></div>
@@ -1036,6 +1091,23 @@
     <p class="foot">Self-contained chooser + reference · served at <code>/styleguide/</code> · the live app is untouched.</p>
   </div>
 
+  <!-- One-tap flip bar — phone screens only (added 23 Jun). Stays in sync with the sidebar controls. -->
+  <div class="flip-bar" id="flip-bar" role="group" aria-label="Quick theme flip">
+    <div class="fb-group fb-accent">
+      <span class="fb-label">Accent</span>
+      <button type="button" class="on" data-accent-pick="A" aria-label="Accent A · bright ice" aria-pressed="true"><span class="fb-dot" style="background:#8FCBE8"></span></button>
+      <button type="button" data-accent-pick="B" aria-label="Accent B · deeper" aria-pressed="false"><span class="fb-dot" style="background:#6FB7E0"></span></button>
+      <button type="button" data-accent-pick="C" aria-label="Accent C · near-platinum" aria-pressed="false"><span class="fb-dot" style="background:#A9B4C2"></span></button>
+    </div>
+    <span class="fb-sep" aria-hidden="true"></span>
+    <div class="fb-group fb-font">
+      <span class="fb-label">Font</span>
+      <button type="button" data-font-pick="A" aria-label="Font A · Space Grotesk" aria-pressed="false">A</button>
+      <button type="button" data-font-pick="B" aria-label="Font B · Hanken Grotesk" aria-pressed="false">B</button>
+      <button type="button" class="on" data-font-pick="C" aria-label="Font C · Geist" aria-pressed="true">C</button>
+    </div>
+  </div>
+
   <!-- Copy confirmation — announced to screen readers -->
   <div class="copy-toast" id="copy-toast" role="status" aria-live="polite">
     <span class="toast"><svg class="t-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg><span id="copy-toast-text"></span></span>
@@ -1048,31 +1120,35 @@
       var accentHex   = { A:'#8FCBE8', B:'#6FB7E0', C:'#A9B4C2' };
       var fontNames   = { A:'Space Grotesk', B:'Hanken Grotesk', C:'Geist' };
 
-      function setActive(container, attr, value){
-        container.querySelectorAll('button').forEach(function(b){
+      // Toggle the .on / aria-pressed state on EVERY control that picks this axis —
+      // the sidebar choices AND the floating flip bar — so they never disagree.
+      function syncGroup(attr, value){
+        document.querySelectorAll('[' + attr + ']').forEach(function(b){
           var on = b.getAttribute(attr) === value;
           b.classList.toggle('on', on);
           b.setAttribute('aria-pressed', on ? 'true' : 'false');
         });
       }
-
-      document.getElementById('accent-choices').addEventListener('click', function(e){
-        var btn = e.target.closest('[data-accent-pick]'); if(!btn) return;
-        var v = btn.getAttribute('data-accent-pick');
+      function setAccent(v){
         phone.setAttribute('data-accent', v);
-        document.body.setAttribute('data-accent', v);   // re-theme the reference library too
-        setActive(this, 'data-accent-pick', v);
+        document.body.setAttribute('data-accent', v);    // re-theme the reference library too
+        syncGroup('data-accent-pick', v);
         document.getElementById('ro-accent').textContent = accentNames[v];
         document.getElementById('ro-hex').textContent = accentHex[v];
-      });
-
-      document.getElementById('font-choices').addEventListener('click', function(e){
-        var btn = e.target.closest('[data-font-pick]'); if(!btn) return;
-        var v = btn.getAttribute('data-font-pick');
+      }
+      function setFont(v){
         phone.setAttribute('data-font', v);
-        document.body.setAttribute('data-font', v);      // re-theme the reference library too
-        setActive(this, 'data-font-pick', v);
+        document.body.setAttribute('data-font', v);       // re-theme the reference library too
+        syncGroup('data-font-pick', v);
         document.getElementById('ro-font').textContent = fontNames[v];
+      }
+
+      // One delegated listener covers the sidebar controls and the flip bar.
+      document.addEventListener('click', function(e){
+        var a = e.target.closest('[data-accent-pick]');
+        if(a){ setAccent(a.getAttribute('data-accent-pick')); return; }
+        var f = e.target.closest('[data-font-pick]');
+        if(f){ setFont(f.getAttribute('data-font-pick')); return; }
       });
 
       /* ---- Click-to-copy any [data-copy] (token swatches, hex chips) ---- */
