@@ -1,4 +1,6 @@
+# node_modules dir (main checkout) + the node_modules symlink wt.sh adds in worktrees
 node_modules/
+node_modules
 dist/
 dev-dist/
 ds-bundle/
