@@ -11,5 +11,8 @@
 ## Architecture guardrails (non-negotiable — full detail in App-Spec.md §10)
 Program is data, not code · stable immutable session IDs · planned vs performed kept separate · snapshot the prescription on completion · forward-only plan edits (`planVersion`) · reserve `athleteId` / `planId` (default `self`/`current`) · all storage via `db.js` · keep export/import JSON working.
 
+## UI invariants
+- Calendar day cells stay square regardless of month start weekday; place the 1st with `grid-column-start`, never empty filler cells; keep `min-width:0` on `.cal-cell`. Covered by `tests/calendar-grid.test.js`.
+
 ## Personal context
 The owner's private context (situation, goals, constraints) is intentionally **not in this repo**. It lives locally in `CLAUDE.local.md` (gitignored) and/or `~/.claude/CLAUDE.md`. Ask if you need it.

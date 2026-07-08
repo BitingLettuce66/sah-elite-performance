@@ -15,6 +15,10 @@ import { initSync, getStatus, fullSync, onStatusChange } from './sync.js';
 import { addDays, sortByDate, findToday as findTodaySession, computeStreak, statusOf } from './logic.js';
 import { TYPE, NIGGLE, todayISO, round, esc, slug, fmtDate, monthLabel, pill } from './format.js';
 import { buildBackup, validateBackup, normalizeImported } from './backup.js';
+import { loadPlan } from './plan-validator.js';
+import { calendarCells } from './calendar.js';
+import { generateValidatedPlan, requestCoachPlan, generatePlanLocal, coachConfigured, SPORTS, EQUIPMENT, regenerateOneSession, requestRegenSession } from './coach.js';
+import { scanRedFlags } from './red-flags.js';
 import { AUTH_ENABLED, sendMagicLink, getUser, signOut, onAuthChange } from './auth.js';
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -146,12 +150,218 @@ async function importBackup(file){
   } else finish();
 }
 
+// --- Plan loading: every plan (bundled seed or imported file) enters through the
+//     validator. loadPlan() (plan-validator.js) is pure; here we add the IO. ---
+const planKey = () => 'plan:' + ATHLETE_ID;
+// Reserve multi-tenant identity on a plan; default if absent (App-Spec §10.6).
+function withPlanIdentity(data){
+  data.athleteId = data.athleteId || ATHLETE_ID;
+  data.planId = data.planId || PLAN_ID;
+  return data;
+}
+// Validate a flat plan at the load boundary. On success use the normalized,
+// engine-ready data; if the bundled seed itself ever fails validation, fall back
+// to the raw seed so the app still renders (and shout in the console).
+function validatedPlanOrRaw(raw, label){
+  const r = loadPlan(raw);
+  if(r.ok){ if(r.warnings.length) console.info(`Plan "${label}" loaded with ${r.warnings.length} warning(s).`, r.warnings); return r.data; }
+  console.error(`Plan "${label}" failed validation — loading it unvalidated so the app still works.`, r.errors);
+  return raw;
+}
+// Install a validated, engine-ready plan as the active programme: swap it in,
+// anchor the assignment to the chosen start date, persist both, re-materialize,
+// render. Shared by file-import and the AI coach. Logged history is kept (keyed by
+// session id).
+async function installPlan(data, startVal){
+  state.data = data;
+  state.assignment = { athleteId:ATHLETE_ID, planId:data.planId, templateId:data.templateId||'default',
+    startDate:startVal, planVersion:data.planVersion||1, status:'active' };
+  try {
+    await putSetting(planKey(), data);
+    await putSetting('assignment:'+ATHLETE_ID, state.assignment);
+  } catch(e){ console.error('Saving plan failed', e); }
+  materializeDates(); render();
+}
+
+// Import a plan JSON: reject (with reasons) anything that fails the validator,
+// otherwise confirm, persist, and swap it in. Logged history is kept (keyed by
+// session id); the start date / assignment is left as-is.
+async function importPlan(file){
+  let raw;
+  try { raw = JSON.parse(await file.text()); }
+  catch(e){ return importNotice('Import failed', "That file isn't valid JSON."); }
+  const r = loadPlan(raw);
+  if(!r.ok){
+    const items = r.errors.slice(0,8).map(e=>`<li>${esc(e.message)}</li>`).join('');
+    const more = r.errors.length>8 ? `<p class="sheet-note">…and ${r.errors.length-8} more.</p>` : '';
+    openSheet(`<h3>Plan rejected</h3>
+      <p class="sheet-note">This plan didn’t pass the safety checks, so it was not loaded:</p>
+      <ul class="sheet-errs">${items}</ul>${more}
+      <div class="sheet-actions"><button class="btn-save" id="x-ok">OK</button></div>`);
+    $('#x-ok').onclick = closeSheet;
+    return;
+  }
+  const data = withPlanIdentity(r.data);
+  const warnMsg = r.warnings.length ? ` (${r.warnings.length} warning${r.warnings.length===1?'':'s'})` : '';
+  // Anchor the new programme to a chosen start date — default to the plan's own
+  // startDate (validated already) or today. Without this, sessions are scheduled
+  // off the OLD assignment date and a fresh plan can land entirely in the past.
+  const startDefault = data.startDate || todayISO();
+  const finish = async () => {
+    const startVal = $('#imp-start').value || startDefault;
+    closeSheet();
+    await installPlan(data, startVal);
+    importNotice('Plan imported', `Loaded ${data.sessions.length} session${data.sessions.length===1?'':'s'}${warnMsg}. Starts ${fmtDate(startVal)}.`);
+  };
+  openSheet(`<h3>Import plan?</h3>
+    <p class="sheet-note">This replaces your current programme with <b>${esc(data.name||'an imported plan')}</b> — ${data.sessions.length} session${data.sessions.length===1?'':'s'}. Your logged history is kept (matched by session id).</p>
+    <div class="field"><label for="imp-start">Start date</label><input id="imp-start" type="date" value="${startDefault}"></div>
+    <div class="sheet-actions"><button class="btn-cancel" id="x-cancel">Cancel</button><button class="btn-save" id="x-go">Import</button></div>`);
+  $('#x-cancel').onclick = closeSheet;
+  $('#x-go').onclick = finish;
+}
+
+// --- AI coach: intake → red-flag gate → generate→validate loop → preview → install.
+//     The model lives server-side (Supabase Edge Function); when it isn't configured
+//     we fall back to the local generator so the flow still works. ---
+let _lastIntake = null;
+function openCoach(){
+  const sportOpts = SPORTS.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  const equipBoxes = EQUIPMENT.map(e=>`<label class="chk"><input type="checkbox" name="cw-equip" value="${esc(e)}"> ${esc(e)}</label>`).join('');
+  openSheet(`<h3>AI coach</h3>
+    <p class="sheet-note">Tell the coach about you and it'll draft a personalised, periodised plan. Training guidance only — not medical advice.</p>
+    <div class="field"><label for="cw-sport">Sport</label><select id="cw-sport">${sportOpts}</select></div>
+    <div class="field"><label for="cw-goal">Goal</label><input id="cw-goal" type="text" placeholder="e.g. faster 100m by spring" maxlength="200"></div>
+    <div class="field"><label for="cw-weeks">Weeks</label><input id="cw-weeks" type="number" min="1" max="16" value="8"></div>
+    <div class="field"><label for="cw-days">Sessions per week</label><input id="cw-days" type="number" min="1" max="6" value="3"></div>
+    <div class="field"><label>Equipment</label><div class="chk-row">${equipBoxes}</div></div>
+    <div class="field"><label for="cw-start">Start date</label><input id="cw-start" type="date" value="${todayISO()}"></div>
+    <div class="field"><label for="cw-notes">Injuries / how you're feeling</label><textarea id="cw-notes" rows="3" placeholder="Any niggles, recent illness, or how training's been going."></textarea></div>
+    <div class="sheet-actions"><button class="btn-cancel" id="cw-cancel">Cancel</button><button class="btn-save" id="cw-go">Generate plan</button></div>`);
+  $('#cw-cancel').onclick = closeSheet;
+  $('#cw-go').onclick = () => runCoach({
+    sport: $('#cw-sport').value,
+    goal: $('#cw-goal').value,
+    weeks: Number($('#cw-weeks').value),
+    daysPerWeek: Number($('#cw-days').value),
+    equipment: Array.from(document.querySelectorAll('input[name="cw-equip"]:checked')).map(c=>c.value),
+    startDate: $('#cw-start').value || todayISO(),
+    notes: $('#cw-notes').value,
+  });
+}
+async function runCoach(intake){
+  _lastIntake = intake;
+  // Safety gate FIRST — acute red flags short-circuit generation entirely.
+  const flags = scanRedFlags(intake.notes);
+  if(flags.flagged){
+    openSheet(`<h3>Let's pause here</h3>
+      <p class="sheet-note">${esc(flags.advice)}</p>
+      <div class="sheet-actions"><button class="btn-cancel" id="cw-back">Back</button><button class="btn-save" id="cw-ok">OK</button></div>`);
+    $('#cw-ok').onclick = closeSheet; $('#cw-back').onclick = openCoach;
+    return;
+  }
+  const live = coachConfigured();
+  openSheet(`<h3>Coaching…</h3>
+    <p class="sheet-note">${live ? 'Drafting your plan with the AI coach — this can take up to a minute.' : 'Building your plan…'}</p>
+    <div class="sheet-actions"><button class="btn-cancel" id="cw-abort">Cancel</button></div>`);
+  let cancelled = false; $('#cw-abort').onclick = () => { cancelled = true; closeSheet(); };
+  const generate = live ? (i, issues) => requestCoachPlan(i, issues) : (i) => generatePlanLocal(i);
+  let res;
+  try { res = await generateValidatedPlan(intake, { generate }); }
+  catch(e){ res = { ok:false, data:null, errors:[{ message:e.message || 'Generation failed.' }], warnings:[], attempts:0 }; }
+  if(cancelled) return;
+  if(!res.ok){
+    const items = (res.errors||[]).slice(0,8).map(e=>`<li>${esc(e.message)}</li>`).join('');
+    openSheet(`<h3>Couldn't build a safe plan</h3>
+      <p class="sheet-note">The coach's draft didn't pass the safety checks${res.attempts?` after ${res.attempts} attempt${res.attempts===1?'':'s'}`:''}. Try adjusting your inputs:</p>
+      <ul class="sheet-errs">${items}</ul>
+      <div class="sheet-actions"><button class="btn-cancel" id="cw-edit">Edit inputs</button><button class="btn-save" id="cw-retry">Try again</button></div>`);
+    $('#cw-edit').onclick = openCoach;
+    $('#cw-retry').onclick = () => runCoach(_lastIntake);
+    return;
+  }
+  previewCoachPlan(withPlanIdentity(res.data), res.warnings, intake.startDate);
+}
+function previewCoachPlan(data, warnings, startDefault){
+  const start = (data.startDate && /^\d{4}-\d{2}-\d{2}$/.test(data.startDate)) ? data.startDate : (startDefault || todayISO());
+  const high = data.sessions.filter(s=>['HIGH','RACE'].includes(s.type)).length;
+  const warnMsg = warnings && warnings.length ? `<p class="sheet-note">${warnings.length} coaching note${warnings.length===1?'':'s'} flagged — review before you start.</p>` : '';
+  openSheet(`<h3>Your plan is ready</h3>
+    <p class="sheet-note"><b>${esc(data.name||'AI plan')}</b> — ${data.sessions.length} sessions, ${high} high-intensity.</p>
+    ${warnMsg}
+    <div class="field"><label for="cw-pstart">Start date</label><input id="cw-pstart" type="date" value="${start}"></div>
+    <div class="sheet-actions"><button class="btn-cancel" id="cw-discard">Discard</button><button class="btn-save" id="cw-accept">Use this plan</button></div>`);
+  $('#cw-discard').onclick = openCoach;
+  $('#cw-accept').onclick = async () => {
+    const sv = $('#cw-pstart').value || start;
+    closeSheet();
+    await installPlan(data, sv);
+    importNotice('Plan ready', `Loaded ${data.sessions.length} session${data.sessions.length===1?'':'s'}. Starts ${fmtDate(sv)}.`);
+  };
+}
+
+// --- Regenerate ONE session: rework a single session in place via the coach,
+//     re-validating the WHOLE plan, without rebuilding the programme. ---
+function openRegen(id){
+  const se = byId(id); if(!se) return;
+  openSheet(`<h3>Regenerate this session</h3>
+    <p class="sheet-note">The coach will rework <b>${esc(se.focus)}</b> (${se.day} · Wk ${se.week}) while keeping its place in your week. The whole plan is re-checked for safety before anything changes.</p>
+    <div class="field"><label for="rg-why">Why doesn't it fit? (optional)</label><textarea id="rg-why" rows="2" placeholder="e.g. too hard, want more speed, sore that day"></textarea></div>
+    <div class="sheet-actions"><button class="btn-cancel" id="rg-cancel">Cancel</button><button class="btn-save" id="rg-go">Regenerate</button></div>`);
+  $('#rg-cancel').onclick = closeSheet;
+  $('#rg-go').onclick = () => runRegen(id, $('#rg-why').value || '');
+}
+async function runRegen(id, feedback){
+  const se = byId(id); if(!se) return;
+  const live = coachConfigured();
+  openSheet(`<h3>Coaching…</h3>
+    <p class="sheet-note">${live ? 'Reworking this session with the AI coach…' : 'Reworking this session…'}</p>
+    <div class="sheet-actions"><button class="btn-cancel" id="rg-abort">Cancel</button></div>`);
+  let cancelled = false; $('#rg-abort').onclick = () => { cancelled = true; closeSheet(); };
+  const generate = live ? (p, _old, issues) => requestRegenSession(p, id, feedback, issues) : undefined;
+  let res;
+  try { res = await regenerateOneSession(state.data, id, { generate, feedback }); }
+  catch(e){ res = { ok:false, data:null, errors:[{ message:e.message || 'Regeneration failed.' }] }; }
+  if(cancelled) return;
+  if(!res.ok){
+    const items = (res.errors||[]).slice(0,8).map(e=>`<li>${esc(e.message)}</li>`).join('');
+    openSheet(`<h3>Couldn't safely rework this one</h3>
+      <p class="sheet-note">Your plan is unchanged. The reworked session didn't pass the safety checks:</p>
+      <ul class="sheet-errs">${items}</ul>
+      <div class="sheet-actions"><button class="btn-cancel" id="rg-keep">Keep current</button><button class="btn-save" id="rg-retry">Try again</button></div>`);
+    $('#rg-keep').onclick = closeSheet;
+    $('#rg-retry').onclick = () => runRegen(id, feedback);
+    return;
+  }
+  previewRegen(se, res.data, id);
+}
+function previewRegen(oldSe, data, id){
+  const neu = (data.sessions||[]).find(s=>s.id===id) || {};
+  const col = (label, s) => `<div class="rg-col"><div class="rg-h">${label}</div><div>${pill(s.type)} <b>${esc(s.focus||'')}</b></div><p class="sheet-note">${esc(s.sprint||s.gym||'Rest')}</p></div>`;
+  openSheet(`<h3>Reworked session</h3>
+    <div class="rg-compare">${col('Before', oldSe)}${col('After', neu)}</div>
+    <p class="sheet-note">Same day &amp; week — the whole plan still passes the safety checks.</p>
+    <div class="sheet-actions"><button class="btn-cancel" id="rg-discard">Discard</button><button class="btn-save" id="rg-accept">Use this session</button></div>`);
+  $('#rg-discard').onclick = closeSheet;
+  $('#rg-accept').onclick = async () => { closeSheet(); await installSessionSwap(data); };
+}
+// Apply a single-session swap: re-validate the whole plan (defence in depth), then
+// persist + render WITHOUT re-anchoring the start date (the slot is unchanged).
+async function installSessionSwap(data){
+  const r = loadPlan(data);
+  if(!r.ok){ showToast('Could not apply — failed the safety re-check.', null, null, 3500); return; }
+  state.data = withPlanIdentity(r.data);
+  try { await putSetting(planKey(), state.data); } catch(e){ console.error('Saving reworked plan failed', e); }
+  materializeDates(); render();
+  showToast('Session updated', null, null, 2500);
+}
+
 async function boot(){
-  try { const r = await fetch('./data/seed.json'); state.data = await r.json(); }
+  let raw;
+  try { const r = await fetch('./data/seed.json'); raw = await r.json(); }
   catch(e){ $('#view').innerHTML = '<div class="empty">Could not load programme data.</div>'; return; }
-  // Reserve multi-tenant identity on the plan; default if absent (App-Spec §10.6).
-  state.data.athleteId = state.data.athleteId || ATHLETE_ID;
-  state.data.planId = state.data.planId || PLAN_ID;
+  // The bundled seed enters through the same validator gate as any other plan.
+  state.data = withPlanIdentity(validatedPlanOrRaw(raw, 'seed'));
   // The template is date-agnostic; an assignment binds it to a start date.
   const defaultAssignment = { athleteId:ATHLETE_ID, planId:state.data.planId,
     templateId:state.data.templateId||'default', startDate:state.data.startDate,
@@ -166,6 +376,14 @@ async function boot(){
     state.logs = await loadAllLogs(state.data.athleteId);
     state.targets = (await getSetting(targetsKey())) || {};
     state.bodyweight = (await getSetting('bw:'+ATHLETE_ID)) || [];
+    // Prefer a previously-imported plan, re-validated on load; keep the seed if it
+    // is absent or (defensively) no longer passes.
+    const storedPlan = await getSetting(planKey());
+    if(storedPlan){
+      const rp = loadPlan(storedPlan);
+      if(rp.ok) state.data = withPlanIdentity(rp.data);
+      else console.warn('Stored plan failed validation; keeping the bundled seed.', rp.errors);
+    }
     let asg = await getSetting('assignment:'+ATHLETE_ID);
     if(!asg){ asg = defaultAssignment; await putSetting('assignment:'+ATHLETE_ID, asg); }
     state.assignment = asg;
@@ -192,7 +410,7 @@ const sorted = () => sortByDate(state.data.sessions);
 function findToday(){ return findTodaySession(state.data.sessions, todayISO()); }
 function byId(id){ return state.data.sessions.find(x=>x.id===id); }
 
-function card(se){
+function card(se, opts={}){
   const lg = getLog(se.id)||{};
   const done = lg.done ? '<span class="done">✓ Logged</span>' : '';
   const body = se.type==='RECOVERY'
@@ -204,14 +422,26 @@ function card(se){
     <details><summary>Cool-down</summary><p>${esc(se.cooldown)}</p></details>` : '';
   const rules = (state.data && state.data.rules && state.data.rules.length)
     ? `<details class="rules-tog"><summary>Session rules &amp; cues</summary><ul>${state.data.rules.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>` : '';
+  const actions = lg.done
+    ? `<button class="btn-log" data-id="${se.id}">Edit log</button>`
+    : `<div class="card-actions"><button class="btn-done" data-id="${se.id}">✓ Mark done</button><button class="btn-log alt" data-id="${se.id}">Details</button>${se.type==='RECOVERY' ? '' : `<button class="btn-regen alt" data-id="${se.id}">Regenerate</button>`}</div>`;
+  // Today hero: eyebrow → big display title → live-dot meta → week dots, then the usual body.
+  if(opts.hero){
+    return `<article class="card card-hero">
+      <div class="hero-head"><p class="hero-eyebrow">${esc(se.day)} · Today</p>${done}</div>
+      <h2 class="card-title hero-title">${esc(se.focus)}</h2>
+      <div class="hero-meta">${lg.done?'':'<span class="live-dot"></span>'}${pill(se.type)}<span class="hero-sub">${fmtDate(se.date)} · ${esc(se.surface)}</span></div>
+      ${weekStrip(se, true)}
+      ${body}${tog}${rules}
+      ${actions}
+    </article>`;
+  }
   return `<article class="card">
     <div class="card-top">${pill(se.type)}<span>${esc(se.phase)} · Wk ${se.week} · ${se.day}</span>${done}</div>
     <h2 class="card-title">${esc(se.focus)}</h2>
     <div class="meta">${fmtDate(se.date)} · ${esc(se.surface)}</div>
     ${body}${tog}${rules}
-    ${lg.done
-      ? `<button class="btn-log" data-id="${se.id}">Edit log</button>`
-      : `<div class="card-actions"><button class="btn-done" data-id="${se.id}">✓ Mark done</button><button class="btn-log alt" data-id="${se.id}">Details</button></div>`}
+    ${actions}
   </article>`;
 }
 
@@ -219,13 +449,13 @@ function card(se){
 function weekSessions(se){ return sorted().filter(s=>s.phase===se.phase && s.week===se.week); }
 // Next session strictly after today (for the "up next" line).
 function nextAfter(){ const t=todayISO(); return sorted().find(s=>s.date>t) || null; }
-function weekStrip(se){
+function weekStrip(se, hero){
   const t=todayISO();
   const cells = weekSessions(se).map(s=>{ const lg=getLog(s.id)||{}; const d=statusDot(s,lg);
     return `<button class="wk-cell ${d.cls}${s.date===t?' today':''}" data-id="${s.id}">
       <span class="wk-day">${s.day}</span><span class="wk-dot">${d.char}</span></button>`;
   }).join('');
-  return `<div class="week-strip">${cells}</div>`;
+  return `<div class="week-strip${hero?' wk-dots':''}">${cells}</div>`;
 }
 function viewToday(){
   const se = findToday();
@@ -235,7 +465,9 @@ function viewToday(){
   const nextHtml = next ? `<button class="nextup" data-id="${next.id}">
       <span class="nextup-label">Up next</span>
       <span class="nextup-body">${pill(next.type)}<span class="nextup-focus">${esc(next.focus)}</span><span class="nextup-date">${fmtDate(next.date)}</span></span></button>` : '';
-  return `<p class="eyebrow">${isToday?'Today':'Next up'}</p>${weekStrip(se)}${card(se)}${nextHtml}`;
+  // Today opens to a calm hero (week strip lives inside it); upcoming sessions keep the plain layout.
+  if(isToday) return `${card(se,{hero:true})}${nextHtml}`;
+  return `<p class="eyebrow">Next up</p>${weekStrip(se)}${card(se)}`;
 }
 // Tappable status dot: done ✓ / missed (past, not done) / upcoming.
 function statusDot(se, lg){
@@ -274,27 +506,11 @@ function viewHistoryList(){
 const calMonth = () => state.histMonth || todayISO().slice(0,7);
 function shiftMonth(ym, delta){ const [y,m]=ym.split('-').map(Number); const d=new Date(y, m-1+delta, 1);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
-// Map each session to its (computed) date for O(1) calendar lookup.
-function sessionsByDate(){ const m={}; for(const s of state.data.sessions) m[s.date]=s; return m; }
 function viewHistoryCalendar(){
   const ym = calMonth(); const [y,m] = ym.split('-').map(Number);
   const t = todayISO();
-  const byDate = sessionsByDate();
-  const startWeekday = (new Date(y, m-1, 1).getDay()+6)%7;   // 0=Mon … 6=Sun
-  const daysInMonth = new Date(y, m, 0).getDate();
   const dow = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<span class="cal-dow">${d}</span>`).join('');
-  let cells = '';
-  for(let i=0;i<startWeekday;i++) cells += `<span class="cal-cell empty"></span>`;
-  for(let d=1; d<=daysInMonth; d++){
-    const iso = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const se = byDate[iso];
-    const isToday = iso===t ? ' today' : '';
-    if(!se){ cells += `<span class="cal-cell${isToday}"><span class="cal-num">${d}</span></span>`; continue; }
-    const st = statusOf(se, getLog(se.id)||{}, t);   // done | missed | future
-    const stWord = st==='done' ? 'done' : st==='missed' ? 'missed' : 'upcoming';   // status in words, not colour alone
-    cells += `<button class="cal-cell has ${st}${isToday}" data-id="${se.id}" aria-label="${fmtDate(iso)} — ${esc(se.focus)} — ${stWord}">
-      <span class="cal-num">${d}</span><span class="cal-dot ${st}" aria-hidden="true"></span></button>`;
-  }
+  const { cells } = calendarCells({ year:y, month:m, today:t, sessions:state.data.sessions, logs:state.logs });
   const label = new Date(y, m-1, 1).toLocaleDateString('en-AU',{month:'long',year:'numeric'});
   return `${historyHead('calendar')}
     <div class="cal-nav">
@@ -542,7 +758,12 @@ function openSettings(){
     <section class="set-group">
       <h4>Plan</h4>
       <p class="set-note">Programme starts <b>${state.assignment?fmtDate(state.assignment.startDate):'—'}</b> · ${state.data.sessions.length} sessions, scheduled relative to that date.</p>
-      <button class="btn-cancel" id="set-plan-start">Change start date</button>
+      <button class="btn-save" id="set-coach">✨ Generate a plan with the AI coach</button>
+      <div class="backup-actions">
+        <button class="btn-cancel" id="set-plan-start">Change start date</button>
+        <button class="btn-cancel" id="set-plan-import">Import plan</button>
+      </div>
+      <input type="file" id="set-plan-file" accept="application/json,.json" hidden>
     </section>
     <section class="set-group">
       <h4>Your data</h4>
@@ -555,7 +776,10 @@ function openSettings(){
     </section>
     <div class="sheet-actions"><button class="btn-save" id="x-done">Done</button></div>`);
   $('#x-done').onclick = closeSheet;
+  $('#set-coach').onclick = openCoach;
   $('#set-plan-start').onclick = openPlanStart;
+  const pi=$('#set-plan-import'), pf=$('#set-plan-file');
+  if(pi&&pf){ pi.onclick=()=>pf.click(); pf.onchange=()=>{ if(pf.files[0]) importPlan(pf.files[0]); pf.value=''; }; }
   $('#set-export').onclick = exportBackup;
   const im=$('#set-import'), f=$('#set-file');
   if(im&&f){ im.onclick=()=>f.click(); f.onchange=()=>{ if(f.files[0]) importBackup(f.files[0]); f.value=''; }; }
@@ -657,6 +881,7 @@ function render(){
   const se=findToday(); $('#phase').textContent = se?`${se.phase} · Wk ${se.week}`:'';
   $('#view').querySelectorAll('.btn-log').forEach(b=>b.onclick=()=>openLog(b.dataset.id));
   $('#view').querySelectorAll('.btn-done').forEach(b=>b.onclick=()=>quickDone(b.dataset.id));
+  $('#view').querySelectorAll('.btn-regen').forEach(b=>b.onclick=()=>openRegen(b.dataset.id));
   $('#view').querySelectorAll('.row-main').forEach(b=>b.onclick=()=>openDetail(b.dataset.id));
   $('#view').querySelectorAll('.row-dot').forEach(b=>b.onclick=()=>toggleDone(b.dataset.done));
   $('#view').querySelectorAll('.wk-cell, .nextup').forEach(b=>b.onclick=()=>openDetail(b.dataset.id));
@@ -692,6 +917,7 @@ function render(){
 
 function openDetail(id){ openSheet(card(sessionView(byId(id))));
   $('#sheet').querySelectorAll('.btn-log').forEach(b=>b.onclick=()=>openLog(b.dataset.id));
+  $('#sheet').querySelectorAll('.btn-regen').forEach(b=>b.onclick=()=>openRegen(b.dataset.id));
   $('#sheet').querySelectorAll('.btn-done').forEach(b=>b.onclick=()=>{ quickDone(b.dataset.id); closeSheet(); }); }
 
 function openLog(id){

@@ -1,6 +1,10 @@
 {
  "app": "SAH Elite Performance",
  "generated": "2026-06-17",
+ "name": "SAH Elite sprint programme",
+ "sport": "sprints",
+ "goal": "Season build",
+ "source": "coach",
  "athleteId": "self",
  "planId": "current",
  "planVersion": 1,
