@@ -44,6 +44,16 @@ describe('validateBackup', () => {
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/no valid log/i);
   });
+
+  it('drops tombstones so a deleted session is not resurrected on import', () => {
+    const r = validateBackup({ logs: [
+      { sessionId: 'P1-W1-Mon', deleted: true },   // tombstone → dropped
+      { sessionId: 'P1-W1-Wed', done: true },
+    ] });
+    expect(r.ok).toBe(true);
+    expect(r.logs).toHaveLength(1);
+    expect(r.logs[0].sessionId).toBe('P1-W1-Wed');
+  });
 });
 
 describe('normalizeImported', () => {
@@ -55,5 +65,24 @@ describe('normalizeImported', () => {
     expect(out[0].rpe).toBe(7);
     expect(out[0].athleteId).toBe('other'); // the log's own value wins over the default
     expect(out[0].planId).toBe('current');
+  });
+
+  it('sanitises to known fields/types and drops hostile or malformed values', () => {
+    const out = normalizeImported([{
+      sessionId: 'P1-W1-Mon',
+      rpe: '7x',                       // non-numeric → dropped
+      squatKg: '"><img src=x onerror=alert(1)>', // injection attempt → dropped
+      hipThrustKg: 120,               // valid → kept
+      note: 'felt strong',
+      sprints: [{ dist: '30m', time: 3.7 }, { dist: 'x', time: 'bad' }, { junk: 1 }],
+      evil: '<script>alert(1)</script>',  // unknown field → dropped
+    }], { athleteId: 'self', planId: 'current' });
+    const r = out[0];
+    expect(r).not.toHaveProperty('rpe');
+    expect(r).not.toHaveProperty('squatKg');
+    expect(r.hipThrustKg).toBe(120);
+    expect(r.note).toBe('felt strong');
+    expect(r.sprints).toEqual([{ dist: '30m', time: 3.7 }]);
+    expect(r).not.toHaveProperty('evil');
   });
 });

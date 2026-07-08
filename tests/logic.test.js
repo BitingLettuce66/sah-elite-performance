@@ -51,6 +51,15 @@ describe('computeStreak', () => {
   it('is 0 with no logs', () => {
     expect(computeStreak(SESSIONS, {}, '2026-06-17')).toBe(0);
   });
+  it('skips rest (RECOVERY) days so a weekly rest day does not reset the streak', () => {
+    const sessions = [
+      { id: 'a', date: '2026-06-15', type: 'HIGH' },
+      { id: 'b', date: '2026-06-16', type: 'RECOVERY' }, // rest day, never marked done
+      { id: 'c', date: '2026-06-17', type: 'HIGH' },
+    ];
+    const logs = { a: { done: true }, c: { done: true } };
+    expect(computeStreak(sessions, logs, '2026-06-17')).toBe(2);
+  });
 });
 
 describe('statusOf', () => {

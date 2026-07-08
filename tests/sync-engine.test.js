@@ -17,7 +17,8 @@ const h = vi.hoisted(() => {
     const rows = () => {
       let rs = [...store[table].values()];
       for (const [c, v] of filters) {
-        if (c[0] === '>') { const col = c.slice(1); rs = rs.filter(r => (r[col] || '') > v); }
+        if (c.startsWith('>=')) { const col = c.slice(2); rs = rs.filter(r => (r[col] || '') >= v); }
+        else if (c[0] === '>') { const col = c.slice(1); rs = rs.filter(r => (r[col] || '') > v); }
         else rs = rs.filter(r => r[c] === v);
       }
       return rs;
@@ -26,6 +27,7 @@ const h = vi.hoisted(() => {
       select() { return builder; },
       eq(c, v) { filters.push([c, v]); return builder; },
       gt(c, v) { filters.push(['>' + c, v]); return builder; },
+      gte(c, v) { filters.push(['>=' + c, v]); return builder; },
       order() { return Promise.resolve({ data: rows(), error: null }); },
       maybeSingle() { return Promise.resolve({ data: rows()[0] || null, error: null }); },
       upsert(row) { store[table].set(pkOf(table, row), { ...row }); return Promise.resolve({ error: null }); },
@@ -141,5 +143,27 @@ describe('auth transitions', () => {
     h.fireAuth('SIGNED_IN', h.session);   // triggers an auto fullSync (backfills A1)
     await settle();
     expect(CLOUD.logs.has(uidKey('A1'))).toBe(true);                  // synced after sign-in
+  });
+});
+
+describe('pull cursor — inclusive boundary', () => {
+  it('pulls a cloud row whose updated_at equals the cursor (no same-millisecond loss)', async () => {
+    await putSettingQuiet({ key: 'sync:cursor:logs', value: '2026-06-20T00:00:00Z', deleted: false, updatedAt: '2026-06-20T00:00:00Z' });
+    CLOUD.logs.set(uidKey('SM1'), cloudLog('SM1', { done: true, updated_at: '2026-06-20T00:00:00Z' }));  // same ms as cursor
+    await pull();
+    expect((await loadAllLogs('self'))['SM1'].done).toBe(true);       // strict '>' would have skipped it forever
+  });
+});
+
+describe('delete safety', () => {
+  it('deleting a session with nothing stored locally does not push a destructive tombstone', async () => {
+    CLOUD.logs.set(uidKey('D2'), cloudLog('D2', { done: true, updated_at: '2026-06-25T00:00:00Z' }));  // a real cloud row from another device
+    await deleteLog('D2');                                            // no local D2 exists
+    expect(await getLogRaw('D2')).toBeUndefined();                    // no local tombstone created
+    expect((await allOutbox()).find(m => m.key === 'D2')).toBeUndefined();  // nothing queued
+    await pushDirty();
+    const cloud = CLOUD.logs.get(uidKey('D2'));
+    expect(cloud.done).toBe(true);                                    // real cloud row left untouched
+    expect(cloud.deleted).toBe(false);
   });
 });
